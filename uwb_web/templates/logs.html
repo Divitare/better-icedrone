@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% block title %}Logs — UWB Web{% endblock %}
+
+{% block content %}
+<h1>Logs &amp; History</h1>
+
+<!-- Tab selector -->
+<div class="tabs">
+    <a href="{{ url_for('logs.index', tab='measurements', session_id=selected_session, device_id=selected_device, start=start, end=end) }}"
+       class="tab {% if tab=='measurements' %}active{% endif %}">Measurements</a>
+    <a href="{{ url_for('logs.index', tab='raw_lines', session_id=selected_session, start=start, end=end) }}"
+       class="tab {% if tab=='raw_lines' %}active{% endif %}">Raw Lines</a>
+    <a href="{{ url_for('logs.index', tab='events', session_id=selected_session, start=start, end=end) }}"
+       class="tab {% if tab=='events' %}active{% endif %}">Events</a>
+</div>
+
+<!-- Filters -->
+<form class="filter-bar" method="get" action="{{ url_for('logs.index') }}">
+    <input type="hidden" name="tab" value="{{ tab }}">
+    <label>Start <input type="datetime-local" name="start" value="{{ start }}"></label>
+    <label>End <input type="datetime-local" name="end" value="{{ end }}"></label>
+    <select name="session_id">
+        <option value="">All sessions</option>
+        {% for s in sessions %}
+        <option value="{{ s.id }}" {% if selected_session == s.id %}selected{% endif %}>{{ s.name }}</option>
+        {% endfor %}
+    </select>
+    {% if tab == 'measurements' %}
+    <select name="device_id">
+        <option value="">All devices</option>
+        {% for d in devices %}
+        <option value="{{ d.id }}" {% if selected_device == d.id %}selected{% endif %}>
+            {{ d.short_addr_hex }}{% if d.label %} ({{ d.label }}){% endif %}
+        </option>
+        {% endfor %}
+    </select>
+    {% endif %}
+    <button type="submit" class="btn">Filter</button>
+</form>
+
+<!-- Export links -->
+<div class="action-bar">
+    {% if tab == 'measurements' %}
+    <a class="btn btn-secondary" href="{{ url_for('export.measurements_csv', start=start, end=end, session_id=selected_session or '', device_id=selected_device or '') }}">Export CSV</a>
+    {% elif tab == 'raw_lines' %}
+    <a class="btn btn-secondary" href="{{ url_for('export.raw_lines_csv', start=start, end=end, session_id=selected_session or '') }}">Export CSV</a>
+    {% elif tab == 'events' %}
+    <a class="btn btn-secondary" href="{{ url_for('export.events_csv', start=start, end=end, session_id=selected_session or '') }}">Export CSV</a>
+    {% endif %}
+</div>
+
+<!-- Data table -->
+{% if tab == 'measurements' %}
+<table class="data-table">
+    <thead>
+        <tr><th>Time</th><th>Device</th><th>Label</th><th>Range (m)</th><th>RX Power</th><th>Source</th></tr>
+    </thead>
+    <tbody>
+        {% for m in measurements %}
+        <tr>
+            <td class="mono">{{ m.pi_received_at_utc.strftime('%Y-%m-%d %H:%M:%S') if m.pi_received_at_utc else '—' }}</td>
+            <td class="mono">{{ m.device.short_addr_hex if m.device else '—' }}</td>
+            <td>{{ m.device.label or '' if m.device else '' }}</td>
+            <td class="mono">{{ "%.3f"|format(m.range_m) }}</td>
+            <td class="mono">{{ "%.1f"|format(m.rx_power_dbm) if m.rx_power_dbm is not none else '—' }}</td>
+            <td>{{ m.parse_source }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% if not measurements %}<p class="muted">No measurements found.</p>{% endif %}
+
+{% elif tab == 'raw_lines' %}
+<table class="data-table">
+    <thead>
+        <tr><th>Time</th><th>Type</th><th>Status</th><th>Line</th></tr>
+    </thead>
+    <tbody>
+        {% for r in raw_lines %}
+        <tr>
+            <td class="mono">{{ r.pi_received_at_utc.strftime('%Y-%m-%d %H:%M:%S') if r.pi_received_at_utc else '—' }}</td>
+            <td>{{ r.line_type_guess or '—' }}</td>
+            <td>{{ r.parser_status }}</td>
+            <td class="mono raw-line">{{ r.line_text[:200] }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% if not raw_lines %}<p class="muted">No raw lines found.</p>{% endif %}
+
+{% elif tab == 'events' %}
+<table class="data-table">
+    <thead>
+        <tr><th>Time</th><th>Type</th><th>Device</th><th>Text</th></tr>
+    </thead>
+    <tbody>
+        {% for e in events %}
+        <tr>
+            <td class="mono">{{ e.event_time_utc.strftime('%Y-%m-%d %H:%M:%S') if e.event_time_utc else '—' }}</td>
+            <td>{{ e.event_type }}</td>
+            <td>{{ e.device.short_addr_hex if e.device else '—' }}</td>
+            <td>{{ e.event_text[:200] if e.event_text else '' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% if not events %}<p class="muted">No events found.</p>{% endif %}
+{% endif %}
+
+<!-- Destructive actions -->
+<hr>
+<h3>Delete Data</h3>
+{% if tab == 'measurements' %}
+<form method="post" action="{{ url_for('logs.delete_logs') }}" onsubmit="return confirm('Delete the filtered measurements?')">
+    <input type="hidden" name="session_id" value="{{ selected_session or '' }}">
+    <input type="hidden" name="device_id" value="{{ selected_device or '' }}">
+    <input type="hidden" name="start" value="{{ start }}">
+    <input type="hidden" name="end" value="{{ end }}">
+    <button type="submit" class="btn btn-danger">Delete filtered measurements</button>
+</form>
+{% endif %}
+
+<form method="post" action="{{ url_for('logs.clear_all') }}" class="mt-1">
+    <label>Type <strong>DELETE ALL DATA</strong> to confirm:
+        <input type="text" name="confirm" autocomplete="off" style="width:200px">
+    </label>
+    <button type="submit" class="btn btn-danger">Clear ALL data</button>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/logs.js') }}"></script>
+{% endblock %}

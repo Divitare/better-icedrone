@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}System — UWB Web{% endblock %}
+
+{% block content %}
+<h1>System Diagnostics</h1>
+
+<div class="info-grid">
+    <div class="info-card">
+        <h3>Serial Worker</h3>
+        <table class="kv-table">
+            <tr><td>Status</td><td>{% if stats.get('connected') %}<span class="badge badge-green">Connected</span>{% else %}<span class="badge badge-red">Disconnected</span>{% endif %}</td></tr>
+            <tr><td>Port</td><td class="mono">{{ stats.get('port', '—') }}</td></tr>
+            <tr><td>Started</td><td class="mono">{{ stats.get('started_at', '—') }}</td></tr>
+            <tr><td>Lines read</td><td class="mono">{{ stats.get('lines_read', 0) }}</td></tr>
+            <tr><td>Bytes read</td><td class="mono">{{ "{:,}".format(stats.get('bytes_read', 0)) }}</td></tr>
+            <tr><td>Measurements ingested</td><td class="mono">{{ stats.get('measurements_ingested', 0) }}</td></tr>
+            <tr><td>Events ingested</td><td class="mono">{{ stats.get('events_ingested', 0) }}</td></tr>
+            <tr><td>Parser errors</td><td class="mono">{{ stats.get('parser_errors', 0) }}</td></tr>
+            <tr><td>Reconnects</td><td class="mono">{{ stats.get('reconnect_count', 0) }}</td></tr>
+            <tr><td>Last line time</td><td class="mono">{{ stats.get('last_line_time', '—') }}</td></tr>
+        </table>
+    </div>
+
+    <div class="info-card">
+        <h3>Database</h3>
+        <table class="kv-table">
+            <tr><td>Path</td><td class="mono">{{ db_path }}</td></tr>
+            <tr><td>Size</td><td class="mono">{{ "%.2f"|format(db_size / 1048576) }} MB</td></tr>
+            <tr><td>Measurements</td><td class="mono">{{ "{:,}".format(meas_count) }}</td></tr>
+            <tr><td>Events</td><td class="mono">{{ "{:,}".format(event_count) }}</td></tr>
+            <tr><td>Raw lines</td><td class="mono">{{ "{:,}".format(raw_count) }}</td></tr>
+            <tr><td>SSE clients</td><td class="mono">{{ sse_clients }}</td></tr>
+        </table>
+    </div>
+</div>
+
+<h2>Recent Events</h2>
+<table class="data-table">
+    <thead>
+        <tr><th>Time</th><th>Type</th><th>Text</th></tr>
+    </thead>
+    <tbody>
+        {% for e in events %}
+        <tr>
+            <td class="mono">{{ e.event_time_utc.strftime('%H:%M:%S') if e.event_time_utc else '' }}</td>
+            <td>{{ e.event_type }}</td>
+            <td>{{ e.event_text[:150] if e.event_text else '' }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<h2>Recent Unknown Lines</h2>
+<table class="data-table">
+    <thead>
+        <tr><th>Time</th><th>Line</th></tr>
+    </thead>
+    <tbody>
+        {% for r in unknown_lines %}
+        <tr>
+            <td class="mono">{{ r.pi_received_at_utc.strftime('%H:%M:%S') if r.pi_received_at_utc else '' }}</td>
+            <td class="mono raw-line">{{ r.line_text[:200] }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<p class="muted">Version {{ version }}</p>
+{% endblock %}

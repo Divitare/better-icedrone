@@ -1,0 +1,27 @@
+[Unit]
+Description=UWB Web Application (Flask + Serial Worker)
+After=network.target
+
+[Service]
+Type=simple
+User=uwb
+Group=uwb
+WorkingDirectory=/opt/uwb-web
+Environment="PATH=/opt/uwb-web/venv/bin:/usr/local/bin:/usr/bin"
+Environment="UWB_CONFIG=/opt/uwb-web/config.yaml"
+ExecStart=/opt/uwb-web/venv/bin/gunicorn \
+    --workers 1 \
+    --threads 4 \
+    --worker-class gthread \
+    --bind 0.0.0.0:5000 \
+    --timeout 120 \
+    --access-logfile /opt/uwb-web/data/access.log \
+    wsgi:app
+Restart=always
+RestartSec=5
+
+# Allow access to serial devices
+SupplementaryGroups=dialout
+
+[Install]
+WantedBy=multi-user.target

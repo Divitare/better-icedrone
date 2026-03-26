@@ -1,0 +1,59 @@
+ranging init; 1 device added ! ->  short:1786
+from: 1786	Range: 2.43 m	RX power: -75.31 dBm
+from: 1786	Range: 2.45 m	RX power: -75.12 dBm
+from: 1786	Range: 2.41 m	RX power: -75.50 dBm
+blink; 1 device added ! ->  short:2A3F
+from: 2A3F	Range: 3.17 m	RX power: -78.44 dBm
+from: 1786	Range: 2.44 m	RX power: -75.22 dBm
+from: 2A3F	Range: 3.15 m	RX power: -78.50 dBm
+add_link:find struct Link end
+from: 1786	Range: 2.46 m	RX power: -75.08 dBm
+from: 2A3F	Range: 3.19 m	RX power: -78.38 dBm
+blink; 1 device added ! ->  short:4B01
+from: 4B01	Range: 5.02 m	RX power: -82.10 dBm
+from: 1786	Range: 2.42 m	RX power: -75.35 dBm
+from: 2A3F	Range: 3.18 m	RX power: -78.41 dBm
+from: 4B01	Range: 5.05 m	RX power: -82.15 dBm
+find_link:Link is empty
+from: 1786	Range: 2.47 m	RX power: -75.00 dBm
+from: 2A3F	Range: 3.16 m	RX power: -78.47 dBm
+from: 4B01	Range: 5.01 m	RX power: -82.08 dBm
+blink; 1 device added ! ->  short:7EFF
+from: 7EFF	Range: 4.38 m	RX power: -80.22 dBm
+from: 1786	Range: 2.43 m	RX power: -75.28 dBm
+from: 2A3F	Range: 3.20 m	RX power: -78.35 dBm
+from: 4B01	Range: 5.03 m	RX power: -82.12 dBm
+from: 7EFF	Range: 4.40 m	RX power: -80.18 dBm
+1786
+2.43
+fresh_link:Fresh fail
+from: 1786	Range: 2.44 m	RX power: -75.25 dBm
+from: 2A3F	Range: 3.14 m	RX power: -78.55 dBm
+from: 4B01	Range: 5.00 m	RX power: -82.20 dBm
+from: 7EFF	Range: 4.37 m	RX power: -80.25 dBm
+from: 1786	Range: 2.45 m	RX power: -75.18 dBm
+from: 2A3F	Range: 3.21 m	RX power: -78.32 dBm
+from: 4B01	Range: 5.06 m	RX power: -82.05 dBm
+from: 7EFF	Range: 4.42 m	RX power: -80.15 dBm
+delete inactive device: 4B01
+from: 1786	Range: 2.46 m	RX power: -75.10 dBm
+from: 2A3F	Range: 3.18 m	RX power: -78.42 dBm
+from: 7EFF	Range: 4.39 m	RX power: -80.20 dBm
+something unexpected here
+from: 1786	Range: 2.44 m	RX power: -75.30 dBm
+from: 2A3F	Range: 3.17 m	RX power: -78.45 dBm
+from: 7EFF	Range: 4.41 m	RX power: -80.17 dBm
+from: 1786	Range: 2.43 m	RX power: -75.32 dBm
+from: 2A3F	Range: 3.19 m	RX power: -78.39 dBm
+from: 7EFF	Range: 4.38 m	RX power: -80.23 dBm
+ranging init; 1 device added ! ->  short:4B01
+from: 4B01	Range: 5.10 m	RX power: -82.00 dBm
+from: 1786	Range: 2.45 m	RX power: -75.20 dBm
+from: 2A3F	Range: 3.16 m	RX power: -78.48 dBm
+from: 4B01	Range: 5.08 m	RX power: -82.03 dBm
+from: 7EFF	Range: 4.40 m	RX power: -80.19 dBm
+
+from: 1786	Range: 2.42 m	RX power: -75.38 dBm
+from: 2A3F    Range: 3.15 m    RX power: -78.52 dBm
+from: 4B01	Range: 5.04 m	RX power: -82.11 dBm
+from: 7EFF	Range: 4.36 m	RX power: -80.28 dBm

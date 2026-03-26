@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Devices &amp; Config — UWB Web{% endblock %}
+
+{% block content %}
+<h1>Devices</h1>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>Addr</th>
+            <th>Label</th>
+            <th>First seen</th>
+            <th>Last seen</th>
+            <th>Anchor</th>
+            <th>Expected</th>
+            <th>X</th><th>Y</th><th>Z</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for d in devices %}
+        <tr>
+            <form method="post" action="{{ url_for('devices.update', device_id=d.id) }}">
+            <td class="mono">{{ d.short_addr_hex }}</td>
+            <td><input type="text" name="label" value="{{ d.label or '' }}" style="width:100px"></td>
+            <td class="mono">{{ d.first_seen_at_utc.strftime('%Y-%m-%d %H:%M') if d.first_seen_at_utc else '—' }}</td>
+            <td class="mono">{{ d.last_seen_at_utc.strftime('%Y-%m-%d %H:%M') if d.last_seen_at_utc else '—' }}</td>
+            <td><input type="checkbox" name="is_anchor" {% if d.is_anchor %}checked{% endif %}></td>
+            <td><input type="checkbox" name="is_expected" {% if d.is_expected %}checked{% endif %}></td>
+            <td><input type="number" step="any" name="x" value="{{ d.x if d.x is not none else '' }}" style="width:70px"></td>
+            <td><input type="number" step="any" name="y" value="{{ d.y if d.y is not none else '' }}" style="width:70px"></td>
+            <td><input type="number" step="any" name="z" value="{{ d.z if d.z is not none else '' }}" style="width:70px"></td>
+            <td><button type="submit" class="btn-sm">Save</button></td>
+            </form>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% if not devices %}
+<p class="muted">No devices discovered yet.</p>
+{% endif %}
+
+<hr>
+<h2>Configuration</h2>
+
+<form method="post" action="{{ url_for('devices.update_config') }}" class="config-form">
+    <div class="form-group">
+        <label>Serial port</label>
+        <input type="text" name="serial_port" value="{{ config.get('serial_port', 'auto') }}" placeholder="auto or /dev/ttyUSB0">
+    </div>
+    <div class="form-group">
+        <label>Baud rate</label>
+        <input type="number" name="serial_baud" value="{{ config.get('serial_baud', '115200') }}">
+    </div>
+    <div class="form-group">
+        <label>Retention — raw lines (days)</label>
+        <input type="number" name="retention_days_raw" value="{{ config.get('retention_days_raw', '30') }}">
+    </div>
+    <div class="form-group">
+        <label>Retention — measurements (days)</label>
+        <input type="number" name="retention_days_measurements" value="{{ config.get('retention_days_measurements', '365') }}">
+    </div>
+    <div class="form-group">
+        <label>
+            <input type="checkbox" name="store_raw_lines" {% if config.get('store_raw_lines', 'true') == 'true' %}checked{% endif %}>
+            Store raw serial lines
+        </label>
+    </div>
+    <button type="submit" class="btn">Save Configuration</button>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/devices.js') }}"></script>
+{% endblock %}

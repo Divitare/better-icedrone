@@ -1,0 +1,30 @@
+# uwb-serial.service — Optional standalone serial worker
+#
+# In the default setup the serial worker runs inside the Flask process
+# (uwb-web.service uses gunicorn with 1 worker + the serial thread).
+#
+# This file is provided for advanced deployments where you want to
+# separate the serial ingestion process from the web server.
+# To use it you would need to adapt serial_worker.py to run standalone,
+# which is planned for a future version.
+#
+# For now, use uwb-web.service only.
+
+[Unit]
+Description=UWB Serial Ingestion Worker (standalone — future use)
+After=network.target
+
+[Service]
+Type=simple
+User=uwb
+Group=uwb
+WorkingDirectory=/opt/uwb-web
+Environment="PATH=/opt/uwb-web/venv/bin:/usr/local/bin:/usr/bin"
+Environment="UWB_CONFIG=/opt/uwb-web/config.yaml"
+# ExecStart=/opt/uwb-web/venv/bin/python -m uwb_web.serial_worker
+Restart=always
+RestartSec=5
+SupplementaryGroups=dialout
+
+[Install]
+WantedBy=multi-user.target

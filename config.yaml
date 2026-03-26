@@ -1,0 +1,30 @@
+# UWB Web - Configuration
+# Copy this to config.yaml and adjust as needed.
+
+serial:
+  port: auto            # 'auto' to detect, or explicit like '/dev/ttyUSB0'
+  baud: 115200          # Makerfabs default: 115200
+  timeout: 1.0          # Serial read timeout in seconds
+  reconnect_delay: 3.0  # Seconds between reconnection attempts
+
+database:
+  path: data/uwb_data.db
+
+logging:
+  level: INFO
+  file: data/uwb_web.log
+
+web:
+  host: 0.0.0.0
+  port: 5000
+  debug: false
+
+retention:
+  raw_lines_days: 30
+  measurements_days: 365
+  store_raw_lines: true
+
+demo:
+  enabled: false
+  replay_file: tests/sample_serial_output.txt
+  replay_speed: 1.0     # 1.0 = real-time, 0.1 = 10x faster

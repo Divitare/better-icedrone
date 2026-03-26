@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Sessions — UWB Web{% endblock %}
+
+{% block content %}
+<h1>Sessions</h1>
+
+<!-- Create new session -->
+<form method="post" action="{{ url_for('sessions.create') }}" class="inline-form">
+    <input type="text" name="name" placeholder="Session name (optional)">
+    <button type="submit" class="btn">New Session</button>
+</form>
+
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Started</th>
+            <th>Ended</th>
+            <th>Duration</th>
+            <th>Samples</th>
+            <th>Devices</th>
+            <th>Status</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for item in session_data %}
+        {% set s = item.session %}
+        <tr>
+            <td>{{ s.id }}</td>
+            <td>
+                <form method="post" action="{{ url_for('sessions.rename', session_id=s.id) }}" class="inline-form">
+                    <input type="text" name="name" value="{{ s.name }}" style="width:160px">
+                    <button type="submit" class="btn-sm" title="Rename">&#10003;</button>
+                </form>
+            </td>
+            <td class="mono">{{ s.started_at_utc.strftime('%Y-%m-%d %H:%M') if s.started_at_utc else '—' }}</td>
+            <td class="mono">{{ s.ended_at_utc.strftime('%Y-%m-%d %H:%M') if s.ended_at_utc else '—' }}</td>
+            <td class="mono">{{ item.duration or '—' }}</td>
+            <td class="mono">{{ item.measurement_count }}</td>
+            <td class="mono">{{ item.device_count }}</td>
+            <td>
+                {% if s.is_active %}
+                    <span class="badge badge-green">Active</span>
+                {% else %}
+                    <span class="badge badge-gray">Ended</span>
+                {% endif %}
+            </td>
+            <td class="actions">
+                {% if s.is_active %}
+                <form method="post" action="{{ url_for('sessions.end', session_id=s.id) }}" class="inline">
+                    <button type="submit" class="btn-sm btn-warning">End</button>
+                </form>
+                {% endif %}
+                <a class="btn-sm btn-secondary" href="{{ url_for('export.measurements_csv', session_id=s.id) }}">CSV</a>
+                <form method="post" action="{{ url_for('sessions.delete', session_id=s.id) }}"
+                      class="inline" onsubmit="return confirm('Delete session \'{{ s.name }}\' and all its data?')">
+                    <button type="submit" class="btn-sm btn-danger">Delete</button>
+                </form>
+            </td>
+        </tr>
+        <!-- Notes row -->
+        <tr class="notes-row">
+            <td></td>
+            <td colspan="8">
+                <form method="post" action="{{ url_for('sessions.notes', session_id=s.id) }}" class="inline-form">
+                    <input type="text" name="notes" value="{{ s.notes or '' }}" placeholder="Notes…" style="width:400px">
+                    <button type="submit" class="btn-sm">Save</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% if not session_data %}
+<p class="muted">No sessions yet.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/sessions.js') }}"></script>
+{% endblock %}

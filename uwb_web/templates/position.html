@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Position — UWB Web{% endblock %}
+
+{% block content %}
+<h1>Position Estimation</h1>
+
+<div class="placeholder-box">
+    <h2>Phase 2 — Coming Soon</h2>
+    <p>This page will provide real-time 2D/3D position estimation using trilateration
+       from the range measurements collected by the UWB anchors.</p>
+
+    <h3>Prerequisites</h3>
+    <ul>
+        <li>At least 3 anchors for 2D, 4 for 3D positioning.</li>
+        <li>Anchor coordinates must be configured on the
+            <a href="{{ url_for('devices.index') }}">Devices</a> page (X, Y, Z fields).</li>
+        <li>Anchors must be marked with the <strong>Anchor</strong> checkbox.</li>
+    </ul>
+
+    <h3>Planned Features</h3>
+    <ul>
+        <li>Real-time 2D scatter plot of tag position</li>
+        <li>3D position estimation via least-squares trilateration</li>
+        <li>Kalman filter for smooth tracking</li>
+        <li>Configurable outlier rejection</li>
+        <li>Position history trail</li>
+        <li>CSV export of position estimates</li>
+    </ul>
+</div>
+{% endblock %}

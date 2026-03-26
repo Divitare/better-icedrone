@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — UWB Web{% endblock %}
+
+{% block content %}
+<h1>Dashboard</h1>
+
+<!-- Status bar -->
+<div class="status-bar">
+    <div class="status-item">
+        <span class="label">Serial</span>
+        {% if stats.get('connected') %}
+            <span class="badge badge-green">Connected</span>
+            <span class="mono">{{ stats.get('port', '—') }}</span>
+        {% else %}
+            <span class="badge badge-red">Disconnected</span>
+        {% endif %}
+    </div>
+    <div class="status-item">
+        <span class="label">Session</span>
+        {% if active_session %}
+            <span class="badge badge-green">{{ active_session.name }}</span>
+        {% else %}
+            <span class="badge badge-gray">None</span>
+        {% endif %}
+    </div>
+    <div class="status-item">
+        <span class="label">Lines read</span>
+        <span class="mono" id="stat-lines">{{ stats.get('lines_read', 0) }}</span>
+    </div>
+    <div class="status-item">
+        <span class="label">Last line</span>
+        <span class="mono" id="stat-last-line">{{ stats.get('last_line_time', '—') }}</span>
+    </div>
+    <div class="status-item" id="sse-status">
+        <span class="label">Live</span>
+        <span class="badge badge-gray" id="sse-badge">Connecting…</span>
+    </div>
+</div>
+
+<!-- Device cards -->
+<h2>Devices</h2>
+{% if devices %}
+<div class="device-grid">
+    {% for device in devices %}
+    {% set info = live_data.get(device.short_addr_hex, {}) %}
+    {% set dstats = device_stats.get(device.id, {}) %}
+    <div class="device-card" id="card-{{ device.short_addr_hex }}" data-addr="{{ device.short_addr_hex }}">
+        <div class="card-header">
+            <span class="device-id">{{ device.short_addr_hex }}</span>
+            {% if device.label %}
+                <span class="device-label">{{ device.label }}</span>
+            {% endif %}
+            {% if device.is_anchor %}
+                <span class="badge badge-blue">Anchor</span>
+            {% endif %}
+            <span class="badge status-badge" id="status-{{ device.short_addr_hex }}">—</span>
+        </div>
+        <div class="card-body">
+            <div class="metric">
+                <span class="metric-label">Range</span>
+                <span class="metric-value" id="range-{{ device.short_addr_hex }}">
+                    {{ "%.3f"|format(info.get('range_m', 0)) if info.get('range_m') is not none else '—' }} m
+                </span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">RX Power</span>
+                <span class="metric-value" id="rxpow-{{ device.short_addr_hex }}">
+                    {{ "%.1f"|format(info.get('rx_power_dbm', 0)) if info.get('rx_power_dbm') is not none else '—' }} dBm
+                </span>
+            </div>
+            <div class="metric">
+                <span class="metric-label">Last seen</span>
+                <span class="metric-value time-ago" id="seen-{{ device.short_addr_hex }}"
+                      data-ts="{{ info.get('last_seen', '') }}">—</span>
+            </div>
+            <div class="metric-row">
+                <span title="Samples (5 min)">N={{ dstats.get('count', 0) }}</span>
+                {% if dstats.get('min_range') is not none %}
+                <span title="Min">↓{{ dstats.min_range }}</span>
+                <span title="Max">↑{{ dstats.max_range }}</span>
+                <span title="Avg">μ={{ dstats.avg_range }}</span>
+                {% endif %}
+            </div>
+            <!-- Sparkline SVG placeholder -->
+            <svg class="sparkline" id="spark-{{ device.short_addr_hex }}" width="100%" height="30" preserveAspectRatio="none"></svg>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="muted">No devices seen yet. Connect the UWB tag board via USB.</p>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Pass initial recent values to JS for sparklines
+    var recentValues = {{ recent_values | tojson }};
+</script>
+<script src="{{ url_for('static', filename='js/dashboard.js') }}"></script>
+{% endblock %}
