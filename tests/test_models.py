@@ -2,10 +2,11 @@
 
 import unittest
 import os
+from datetime import datetime, timezone
 
 from uwb_web import create_app
 from uwb_web.db import db
-from uwb_web.models import Session, Device, Measurement, Event, RawLine, AppConfig
+from uwb_web.models import Session, Device, Measurement, Event, RawLine, AppConfig, User
 
 
 class TestModels(unittest.TestCase):
@@ -89,6 +90,64 @@ class TestModels(unittest.TestCase):
             # Get same device again
             d2 = get_or_create_device('ABCD')
             self.assertEqual(d.id, d2.id)
+
+    def test_user_model(self):
+        with self.app.app_context():
+            u = User(username='admin', is_admin=True)
+            u.set_password('secret')
+            db.session.add(u)
+            db.session.commit()
+            self.assertIsNotNone(u.id)
+            self.assertTrue(u.check_password('secret'))
+            self.assertFalse(u.check_password('wrong'))
+            self.assertTrue(u.is_admin)
+            # Unique constraint
+            u2 = User(username='admin')
+            u2.set_password('other')
+            db.session.add(u2)
+            with self.assertRaises(Exception):
+                db.session.commit()
+
+    def test_login_required(self):
+        """Unauthenticated requests to protected pages redirect to login."""
+        client = self.app.test_client()
+        resp = client.get('/')
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/login', resp.headers['Location'])
+
+    def test_login_flow(self):
+        """Full login → access → logout flow."""
+        with self.app.app_context():
+            u = User(username='testuser', is_admin=True)
+            u.set_password('pass1234')
+            db.session.add(u)
+            db.session.commit()
+
+        client = self.app.test_client()
+        # Login page accessible without auth
+        resp = client.get('/login')
+        self.assertEqual(resp.status_code, 200)
+
+        # Wrong password
+        resp = client.post('/login', data={'username': 'testuser', 'password': 'wrong'})
+        self.assertEqual(resp.status_code, 200)  # re-renders form
+
+        # Correct password
+        resp = client.post('/login', data={'username': 'testuser', 'password': 'pass1234'})
+        self.assertEqual(resp.status_code, 302)  # redirect to dashboard
+
+        # Now can access dashboard
+        resp = client.get('/')
+        self.assertEqual(resp.status_code, 200)
+
+        # Logout
+        resp = client.post('/logout')
+        self.assertEqual(resp.status_code, 302)
+
+        # Back to requiring login
+        resp = client.get('/')
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn('/login', resp.headers['Location'])
 
 
 if __name__ == '__main__':

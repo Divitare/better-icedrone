@@ -20,7 +20,8 @@ def get_sse_broadcaster():
 def create_app(config_path=None, testing=False, db_uri=None):
     global _serial_worker, _sse_broadcaster
 
-    from flask import Flask
+    from flask import Flask, redirect, url_for, request as flask_request
+    from flask_login import LoginManager, current_user
     from uwb_web.config import load_config
     from uwb_web.db import db
     from uwb_web.sse import SSEBroadcaster
@@ -58,6 +59,16 @@ def create_app(config_path=None, testing=False, db_uri=None):
         from uwb_web.services.config_service import set_defaults
         set_defaults()
 
+    # --- Login manager ---
+    login_manager = LoginManager()
+    login_manager.login_view = 'auth.login'
+    login_manager.init_app(app)
+
+    @login_manager.user_loader
+    def load_user(user_id):
+        from uwb_web.models import User
+        return db.session.get(User, int(user_id))
+
     # --- Logging ---
     log_level = getattr(logging, config['logging']['level'].upper(), logging.INFO)
     log_file = config['logging'].get('file')
@@ -72,6 +83,7 @@ def create_app(config_path=None, testing=False, db_uri=None):
     )
 
     # --- Blueprints ---
+    from uwb_web.routes.auth import bp as auth_bp
     from uwb_web.routes.dashboard import bp as dashboard_bp
     from uwb_web.routes.measurements import bp as measurements_bp
     from uwb_web.routes.sessions import bp as sessions_bp
@@ -81,6 +93,7 @@ def create_app(config_path=None, testing=False, db_uri=None):
     from uwb_web.routes.api import bp as api_bp
     from uwb_web.routes.export import bp as export_bp
 
+    app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(measurements_bp)
     app.register_blueprint(sessions_bp)
@@ -90,6 +103,16 @@ def create_app(config_path=None, testing=False, db_uri=None):
     app.register_blueprint(api_bp)
     app.register_blueprint(export_bp)
 
+    # --- Require login for all routes except auth and static ---
+    @app.before_request
+    def require_login():
+        if flask_request.endpoint and flask_request.endpoint.startswith('auth.'):
+            return
+        if flask_request.endpoint == 'static':
+            return
+        if not current_user.is_authenticated:
+            return redirect(url_for('auth.login'))
+
     # --- Template globals ---
     @app.context_processor
     def inject_globals():
@@ -97,6 +120,7 @@ def create_app(config_path=None, testing=False, db_uri=None):
         return {
             'app_version': __version__,
             'active_session_global': get_active_session(),
+            'current_user': current_user,
         }
 
     # --- Serial worker ---

@@ -166,6 +166,36 @@ init_database() {
     success "Database initialized."
 }
 
+setup_admin() {
+    info "Checking admin account..."
+    local has_users
+    has_users=$("${VENV_DIR}/bin/python" -c "
+import sys, os
+sys.path.insert(0, '${INSTALL_DIR}')
+from uwb_web import create_app
+from uwb_web.db import db
+from uwb_web.models import User
+app = create_app()
+with app.app_context():
+    print(User.query.count())
+" 2>/dev/null)
+
+    if [[ "$has_users" == "0" || -z "$has_users" ]]; then
+        warn "No admin account found. You need one to log in to the web UI."
+        echo ""
+        read -rp "  Create admin account now? [Y/n]: " create_admin
+        if [[ "${create_admin,,}" != "n" ]]; then
+            cd "${INSTALL_DIR}"
+            "${VENV_DIR}/bin/python" scripts/create_admin.py
+        else
+            warn "No admin created. Run later:"
+            echo "    sudo ${VENV_DIR}/bin/python ${INSTALL_DIR}/scripts/create_admin.py"
+        fi
+    else
+        success "Admin account exists (${has_users} user(s))."
+    fi
+}
+
 install_systemd_service() {
     info "Installing systemd service..."
     cp "${INSTALL_DIR}/systemd/uwb-web.service" "${SERVICE_FILE}"
@@ -245,6 +275,7 @@ do_update() {
             setup_venv
             setup_data_dir
             init_database
+            setup_admin
             install_systemd_service
             set_permissions
             start_service
@@ -286,6 +317,7 @@ do_fresh_install() {
     setup_venv
     setup_data_dir
     init_database
+    setup_admin
     install_systemd_service
     set_permissions
     start_service
