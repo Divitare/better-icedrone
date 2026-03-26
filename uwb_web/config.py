@@ -32,6 +32,11 @@ DEFAULT_CONFIG = {
         'replay_file': 'tests/sample_serial_output.txt',
         'replay_speed': 1.0,
     },
+    'motion': {
+        'host': '127.0.0.1',
+        'port': 5000,
+        'timeout': 10.0,
+    },
 }
 
 

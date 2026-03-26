@@ -18,6 +18,10 @@
             <a href="{{ url_for('devices.index') }}" class="{% if request.endpoint == 'devices.index' %}active{% endif %}">Devices</a>
             <a href="{{ url_for('system.index') }}" class="{% if request.endpoint == 'system.index' %}active{% endif %}">System</a>
             <a href="{{ url_for('position.index') }}" class="{% if request.endpoint == 'position.index' %}active{% endif %}">Position</a>
+            <a href="{{ url_for('motion.index') }}" class="{% if request.endpoint == 'motion.index' %}active{% endif %}">Motion</a>
+            {% if current_user.is_authenticated and current_user.is_admin %}
+            <a href="{{ url_for('admin.index') }}" class="{% if request.endpoint and request.endpoint.startswith('admin.') %}active{% endif %}">Admin</a>
+            {% endif %}
         </div>
         <div class="nav-status">
             {% if active_session_global %}

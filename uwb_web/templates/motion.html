@@ -1,0 +1,245 @@
+{% extends "base.html" %}
+{% block title %}Motion Control — UWB Web{% endblock %}
+
+{% block head %}
+<style>
+    .motion-layout { display: flex; gap: 20px; flex-wrap: wrap; }
+    .motion-main { flex: 1 1 500px; display: flex; flex-direction: column; gap: 12px; }
+    .motion-sidebar { flex: 0 0 300px; display: flex; flex-direction: column; gap: 12px; }
+    .panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+    .panel h3 { margin: 0 0 10px; font-size: 14px; }
+
+    /* Connection status */
+    .conn-bar { display: flex; align-items: center; gap: 10px; }
+    .conn-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--gray); flex-shrink: 0; }
+    .conn-dot.ok { background: var(--green); }
+    .conn-dot.err { background: var(--red); }
+
+    /* Large coords */
+    .coord-display { font-family: var(--mono); font-size: 24px; font-weight: 700; text-align: center; margin: 6px 0; }
+    .coord-display .axis-label { color: var(--text-muted); font-size: 14px; font-weight: 600; }
+
+    /* Jog pad */
+    .jog-grid { display: grid; grid-template-columns: repeat(3, 52px); grid-template-rows: repeat(3, 42px); gap: 4px; justify-content: center; }
+    .jog-grid button { font-weight: 700; font-size: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); cursor: pointer; }
+    .jog-grid button:hover { background: var(--bg); }
+    .jog-grid button:active { background: var(--primary); color: #fff; }
+    .jog-z { display: flex; gap: 4px; justify-content: center; margin-top: 8px; }
+    .jog-z button { width: 52px; height: 42px; font-weight: 700; font-size: 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--card); cursor: pointer; }
+    .jog-z button:hover { background: var(--bg); }
+    .jog-z button:active { background: var(--primary); color: #fff; }
+
+    /* Params row */
+    .param-row { display: flex; gap: 10px; margin: 10px 0; flex-wrap: wrap; align-items: end; }
+    .param-group { display: flex; flex-direction: column; gap: 2px; }
+    .param-group label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+    .param-group input { width: 80px; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; font-family: var(--mono); }
+
+    /* Absolute move */
+    .abs-row { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+    .abs-row .param-group input { width: 90px; }
+
+    /* Init buttons */
+    .init-buttons { display: flex; gap: 8px; flex-wrap: wrap; }
+    .btn-stop { background: var(--red); color: #fff; font-size: 14px; font-weight: 700; padding: 8px 20px; }
+    .btn-init { background: var(--green); color: #fff; }
+    .btn-home { background: var(--orange); color: #333; }
+
+    /* Status table */
+    .status-kv td { padding: 3px 8px; font-size: 13px; }
+    .status-kv td:first-child { font-weight: 600; color: var(--text-muted); white-space: nowrap; width: 130px; }
+    .status-kv .val { font-family: var(--mono); }
+
+    /* Grid form */
+    .grid-table { width: 100%; font-size: 13px; }
+    .grid-table th { text-align: left; padding: 4px 6px; font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
+    .grid-table td { padding: 4px 6px; }
+    .grid-table input, .grid-table select { width: 100%; padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; font-family: var(--mono); }
+    .grid-params { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; align-items: end; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Motion Control</h1>
+
+<div class="motion-layout">
+    <div class="motion-main">
+
+        <!-- Connection + Init -->
+        <div class="panel">
+            <h3>Controller</h3>
+            <div class="conn-bar" style="margin-bottom: 10px;">
+                <span class="conn-dot" id="conn-dot"></span>
+                <span id="conn-text">Checking…</span>
+            </div>
+            <div class="init-buttons">
+                <button class="btn btn-init" id="btn-init" onclick="motionCmd('/motion/api/init','POST')">Init Axes</button>
+                <button class="btn btn-home" id="btn-home" onclick="motionCmd('/motion/api/home','POST')">Home</button>
+                <button class="btn btn-stop" id="btn-stop" onclick="motionCmd('/motion/api/stop','POST')">STOP</button>
+            </div>
+        </div>
+
+        <!-- Position -->
+        <div class="panel">
+            <h3>Current Position</h3>
+            <div class="coord-display">
+                <span class="axis-label">X</span> <span id="pos-x">—</span> &nbsp;
+                <span class="axis-label">Y</span> <span id="pos-y">—</span> &nbsp;
+                <span class="axis-label">Z</span> <span id="pos-z">—</span>
+                <span style="font-size: 14px; font-weight: 400; color: var(--text-muted);"> mm</span>
+            </div>
+        </div>
+
+        <!-- Jog -->
+        <div class="panel">
+            <h3>Manual Jog (Relative)</h3>
+            <div class="param-row">
+                <div class="param-group">
+                    <label>Step (mm)</label>
+                    <input type="number" id="jog-step" value="10" min="0.1" step="1">
+                </div>
+                <div class="param-group">
+                    <label>Speed (mm/s)</label>
+                    <input type="number" id="jog-speed" value="5" min="0.1" step="1">
+                </div>
+            </div>
+            <div style="display: flex; gap: 24px; align-items: start; flex-wrap: wrap;">
+                <div>
+                    <div style="text-align: center; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">X / Y</div>
+                    <div class="jog-grid">
+                        <div></div>
+                        <button onclick="jog(0,1,0)">Y+</button>
+                        <div></div>
+                        <button onclick="jog(-1,0,0)">X−</button>
+                        <div></div>
+                        <button onclick="jog(1,0,0)">X+</button>
+                        <div></div>
+                        <button onclick="jog(0,-1,0)">Y−</button>
+                        <div></div>
+                    </div>
+                </div>
+                <div>
+                    <div style="text-align: center; font-size: 11px; color: var(--text-muted); margin-bottom: 4px;">Z</div>
+                    <div class="jog-z">
+                        <button onclick="jog(0,0,1)">Z+</button>
+                        <button onclick="jog(0,0,-1)">Z−</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Move Absolute -->
+        <div class="panel">
+            <h3>Move to Position (Absolute)</h3>
+            <div class="abs-row">
+                <div class="param-group">
+                    <label>X (mm)</label>
+                    <input type="number" id="abs-x" value="0" step="0.1">
+                </div>
+                <div class="param-group">
+                    <label>Y (mm)</label>
+                    <input type="number" id="abs-y" value="0" step="0.1">
+                </div>
+                <div class="param-group">
+                    <label>Z (mm)</label>
+                    <input type="number" id="abs-z" value="0" step="0.1">
+                </div>
+                <div class="param-group">
+                    <label>Speed (mm/s)</label>
+                    <input type="number" id="abs-speed" value="5" min="0.1" step="1">
+                </div>
+                <button class="btn" onclick="moveAbsolute()">Go</button>
+            </div>
+        </div>
+
+        <!-- Grid Automation -->
+        <div class="panel">
+            <h3>Grid Automation</h3>
+            <table class="grid-table">
+                <thead>
+                    <tr><th>Axis</th><th>Start (mm)</th><th>Spacing (mm)</th><th># Points</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>X</td>
+                        <td><input type="number" id="gx-start" value="0" step="1"></td>
+                        <td><input type="number" id="gx-space" value="10" step="1"></td>
+                        <td><input type="number" id="gx-n" value="4" min="1" step="1"></td>
+                    </tr>
+                    <tr>
+                        <td>Y</td>
+                        <td><input type="number" id="gy-start" value="0" step="1"></td>
+                        <td><input type="number" id="gy-space" value="10" step="1"></td>
+                        <td><input type="number" id="gy-n" value="4" min="1" step="1"></td>
+                    </tr>
+                    <tr>
+                        <td>Z</td>
+                        <td><input type="number" id="gz-start" value="0" step="1"></td>
+                        <td><input type="number" id="gz-space" value="10" step="1"></td>
+                        <td><input type="number" id="gz-n" value="1" min="1" step="1"></td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="grid-params">
+                <div class="param-group">
+                    <label>Pattern</label>
+                    <select id="grid-pattern"><option value="zig-zag">Zig-Zag</option><option value="typewriter">Typewriter</option></select>
+                </div>
+                <div class="param-group">
+                    <label>Speed (mm/s)</label>
+                    <input type="number" id="grid-speed" value="10" min="0.1" step="1">
+                </div>
+                <div class="param-group">
+                    <label>Accel (mm/s²)</label>
+                    <input type="number" id="grid-accel" value="1000" min="1" step="100">
+                </div>
+                <div class="param-group">
+                    <label>Wait (s)</label>
+                    <input type="number" id="grid-wait" value="0.5" min="0" step="0.1">
+                </div>
+                <div class="param-group">
+                    <label>Reps</label>
+                    <input type="number" id="grid-reps" value="1" min="1" step="1">
+                </div>
+                <button class="btn" onclick="startGrid()">Start Grid</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Sidebar -->
+    <div class="motion-sidebar">
+        <div class="panel">
+            <h3>Controller Status</h3>
+            <table class="status-kv" id="status-table">
+                <tr><td>Connected</td><td class="val" id="st-conn">—</td></tr>
+                <tr><td>Busy</td><td class="val" id="st-busy">—</td></tr>
+                <tr><td>Moving</td><td class="val" id="st-moving">—</td></tr>
+                <tr><td>Grid running</td><td class="val" id="st-grid">—</td></tr>
+                <tr><td>Queue</td><td class="val" id="st-queue">—</td></tr>
+                <tr><td>Status</td><td class="val" id="st-msg">—</td></tr>
+            </table>
+        </div>
+
+        <div class="panel">
+            <h3>Settings</h3>
+            <div class="param-row">
+                <div class="param-group">
+                    <label>Acceleration (mm/s²)</label>
+                    <input type="number" id="set-accel" value="1000" min="1" step="100">
+                </div>
+                <button class="btn btn-sm" onclick="setAccel()">Set</button>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>Event Log</h3>
+            <div id="motion-log" style="max-height: 300px; overflow-y: auto; font-family: var(--mono); font-size: 11px; line-height: 1.6;"></div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/motion.js') }}"></script>
+{% endblock %}

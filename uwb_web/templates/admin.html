@@ -1,0 +1,93 @@
+{% extends "base.html" %}
+{% block title %}Admin — UWB Web{% endblock %}
+
+{% block content %}
+<h1>User Management</h1>
+
+<!-- Create user form -->
+<div style="background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; margin-bottom: 20px; max-width: 500px;">
+    <h3 style="margin-top: 0;">Create New User</h3>
+    <form method="POST" action="{{ url_for('admin.create_user') }}">
+        <div class="form-group">
+            <label>Username</label>
+            <input type="text" name="username" required autocomplete="off">
+        </div>
+        <div class="form-group">
+            <label>Password</label>
+            <input type="password" name="password" required minlength="4" autocomplete="new-password">
+        </div>
+        <div class="form-group">
+            <label>
+                <input type="checkbox" name="is_admin" value="1"> Admin privileges
+            </label>
+        </div>
+        <button type="submit" class="btn">Create User</button>
+    </form>
+</div>
+
+<!-- Users table -->
+<table class="data-table">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Username</th>
+            <th>Role</th>
+            <th>Created</th>
+            <th>Actions</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for u in users %}
+        <tr>
+            <td>{{ u.id }}</td>
+            <td>{{ u.username }}</td>
+            <td>
+                {% if u.is_admin %}
+                <span class="badge badge-blue">Admin</span>
+                {% else %}
+                <span class="badge badge-gray">User</span>
+                {% endif %}
+            </td>
+            <td>{{ u.created_at_utc.strftime('%Y-%m-%d %H:%M') if u.created_at_utc else '—' }}</td>
+            <td class="actions">
+                {% if u.id != current_user.id %}
+                <!-- Toggle admin -->
+                <form method="POST" action="{{ url_for('admin.toggle_admin', uid=u.id) }}" style="display:inline;">
+                    <button type="submit" class="btn-sm btn-secondary" title="Toggle admin role">
+                        {% if u.is_admin %}Demote{% else %}Promote{% endif %}
+                    </button>
+                </form>
+
+                <!-- Reset password -->
+                <form method="POST" action="{{ url_for('admin.reset_password', uid=u.id) }}" style="display:inline;" onsubmit="return promptPw(this)">
+                    <input type="hidden" name="new_password" value="">
+                    <button type="submit" class="btn-sm btn-warning" title="Set a new password">Reset PW</button>
+                </form>
+
+                <!-- Delete -->
+                <form method="POST" action="{{ url_for('admin.delete_user', uid=u.id) }}" style="display:inline;" onsubmit="return confirm('Delete user {{ u.username }}?')">
+                    <button type="submit" class="btn-sm btn-danger">Delete</button>
+                </form>
+                {% else %}
+                <span class="muted">You</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function promptPw(form) {
+    var pw = prompt('Enter new password (min 4 chars):');
+    if (!pw || pw.length < 4) {
+        if (pw !== null) alert('Password must be at least 4 characters.');
+        return false;
+    }
+    form.querySelector('input[name="new_password"]').value = pw;
+    return true;
+}
+</script>
+{% endblock %}

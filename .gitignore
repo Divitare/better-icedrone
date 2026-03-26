@@ -20,3 +20,4 @@ data/
 *.swo
 *~
 .idea/
+isel_imc_s8_controller.py
