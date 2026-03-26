@@ -92,6 +92,7 @@ def create_app(config_path=None, testing=False, db_uri=None):
     from uwb_web.routes.system import bp as system_bp
     from uwb_web.routes.api import bp as api_bp
     from uwb_web.routes.export import bp as export_bp
+    from uwb_web.routes.position import bp as position_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -102,6 +103,7 @@ def create_app(config_path=None, testing=False, db_uri=None):
     app.register_blueprint(system_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(export_bp)
+    app.register_blueprint(position_bp)
 
     # --- Require login for all routes except auth and static ---
     @app.before_request

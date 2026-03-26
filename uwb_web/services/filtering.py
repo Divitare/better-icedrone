@@ -1,12 +1,10 @@
 """
-Signal filtering service — PHASE 2 PLACEHOLDER.
+Signal filtering service for UWB range measurements.
 
-Planned filters:
-- Outlier rejection (IQR / threshold)
-- Max-speed plausibility filter
-- Moving median
+Provides per-device filter pipelines:
+- Outlier rejection (min/max range)
+- Moving median for noise smoothing
 - Moving average / EWMA
-- Stale-value detection
 """
 
 import logging
@@ -51,7 +49,51 @@ class MovingAverageFilter(MeasurementFilter):
         return sum(self._buf) / len(self._buf)
 
 
-# TODO: FilterPipeline that chains filters per device
-# TODO: Speed-based plausibility filter
-# TODO: EWMA filter
-# TODO: Stale-value detection
+class EWMAFilter(MeasurementFilter):
+    """Exponentially weighted moving average."""
+    def __init__(self, alpha=0.3):
+        self._alpha = alpha
+        self._value = None
+
+    def apply(self, value):
+        if self._value is None:
+            self._value = value
+        else:
+            self._value = self._alpha * value + (1 - self._alpha) * self._value
+        return self._value
+
+
+class FilterPipeline:
+    """Chain multiple filters per device. Returns filtered value or None (rejected)."""
+
+    def __init__(self, filters=None):
+        self.filters = filters or []
+
+    def apply(self, value):
+        for f in self.filters:
+            value = f.apply(value)
+            if value is None:
+                return None
+        return value
+
+
+class DeviceFilterBank:
+    """Manages per-device filter pipelines for range measurements."""
+
+    def __init__(self, min_range=0.05, max_range=50.0, median_window=5):
+        self._pipelines = {}
+        self._min_range = min_range
+        self._max_range = max_range
+        self._median_window = median_window
+
+    def _get_pipeline(self, device_id):
+        if device_id not in self._pipelines:
+            self._pipelines[device_id] = FilterPipeline([
+                OutlierRejector(self._min_range, self._max_range),
+                MovingMedianFilter(self._median_window),
+            ])
+        return self._pipelines[device_id]
+
+    def filter_range(self, device_id, range_m):
+        """Apply per-device filter chain. Returns filtered range or None."""
+        return self._get_pipeline(device_id).apply(range_m)

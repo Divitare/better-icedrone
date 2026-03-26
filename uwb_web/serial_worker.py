@@ -20,6 +20,8 @@ from datetime import datetime, timezone
 from collections import deque
 
 from uwb_web.parser import parse_line
+from uwb_web.services.filtering import DeviceFilterBank
+from uwb_web.services.trilateration import estimate_position_2d, estimate_position_3d
 
 logger = logging.getLogger(__name__)
 
@@ -67,6 +69,13 @@ class SerialWorker:
         # Current logging session
         self.is_logging = False
         self.current_session_id = None
+
+        # Position tracking
+        self._filter_bank = DeviceFilterBank()
+        self._filtered_ranges = {}   # device_id -> filtered range_m
+        self._position_lock = threading.Lock()
+        self.last_position = None     # (x, y) or (x, y, z) or None
+        self.position_history = deque(maxlen=200)  # list of {x, y, z?, ts}
 
     # ---- lifecycle ----
 
@@ -288,6 +297,9 @@ class SerialWorker:
                             'timestamp': now_utc.isoformat(),
                         })
 
+                    # Position estimation
+                    self._update_position(device.id, result.range_m, now_utc)
+
                 elif result.line_type in ('device_added', 'device_inactive') and result.short_addr_hex:
                     device = get_or_create_device(result.short_addr_hex, result.short_addr_int, now_utc)
                     if result.line_type == 'device_inactive':
@@ -391,3 +403,54 @@ class SerialWorker:
     def get_recent_values(self):
         with self._recent_lock:
             return {k: list(v) for k, v in self.recent_values.items()}
+
+    def get_position(self):
+        """Return current position estimate and history."""
+        with self._position_lock:
+            return {
+                'position': self.last_position,
+                'history': list(self.position_history),
+            }
+
+    # ---- position estimation ----
+
+    def _update_position(self, device_id, range_m, now_utc):
+        """Run filtered trilateration after each measurement."""
+        filtered = self._filter_bank.filter_range(device_id, range_m)
+        if filtered is None:
+            return
+
+        self._filtered_ranges[device_id] = filtered
+
+        try:
+            with self.app.app_context():
+                from uwb_web.models import Device
+                anchors_2d = {}
+                anchors_3d = {}
+                for d in Device.query.filter_by(is_anchor=True).all():
+                    if d.x is not None and d.y is not None:
+                        anchors_2d[d.id] = (d.x, d.y)
+                        if d.z is not None:
+                            anchors_3d[d.id] = (d.x, d.y, d.z)
+
+                pos = None
+                if len(anchors_3d) >= 4:
+                    pos = estimate_position_3d(self._filtered_ranges, anchors_3d)
+                if pos is None and len(anchors_2d) >= 3:
+                    pos = estimate_position_2d(self._filtered_ranges, anchors_2d)
+
+                if pos is not None:
+                    entry = {'x': pos[0], 'y': pos[1], 'ts': now_utc.isoformat()}
+                    if len(pos) == 3:
+                        entry['z'] = pos[2]
+                    with self._position_lock:
+                        self.last_position = entry
+                        self.position_history.append(entry)
+
+                    if self.sse_broadcaster:
+                        self.sse_broadcaster.publish({
+                            'type': 'position',
+                            **entry,
+                        })
+        except Exception as e:
+            logger.debug("Position estimation error: %s", e)

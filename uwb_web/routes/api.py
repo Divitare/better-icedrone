@@ -31,6 +31,17 @@ def status():
     })
 
 
+# ---- Position ----
+
+@bp.route('/position')
+def position():
+    from uwb_web import get_serial_worker
+    worker = get_serial_worker()
+    if not worker:
+        return jsonify({'position': None, 'history': []})
+    return jsonify(worker.get_position())
+
+
 # ---- Devices ----
 
 @bp.route('/devices')

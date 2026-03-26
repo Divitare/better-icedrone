@@ -183,7 +183,7 @@ with app.app_context():
     if [[ "$has_users" == "0" || -z "$has_users" ]]; then
         warn "No admin account found. You need one to log in to the web UI."
         echo ""
-        read -rp "  Create admin account now? [Y/n]: " create_admin
+        read -rp "  Create admin account now? [Y/n]: " create_admin < /dev/tty
         if [[ "${create_admin,,}" != "n" ]]; then
             cd "${INSTALL_DIR}"
             "${VENV_DIR}/bin/python" scripts/create_admin.py
@@ -264,7 +264,7 @@ do_update() {
     echo "    2) Full reinstall (DELETES data — fresh start)"
     echo "    3) Cancel"
     echo ""
-    read -rp "  Choose [1/2/3]: " choice
+    read -rp "  Choose [1/2/3]: " choice < /dev/tty
 
     case "$choice" in
         1)
@@ -283,7 +283,7 @@ do_update() {
             ;;
         2)
             warn "This will DELETE all existing data and config!"
-            read -rp "  Type 'YES' to confirm: " confirm
+            read -rp "  Type 'YES' to confirm: " confirm < /dev/tty
             if [[ "$confirm" != "YES" ]]; then
                 info "Cancelled."
                 exit 0

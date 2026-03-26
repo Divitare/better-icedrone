@@ -17,7 +17,7 @@
             <a href="{{ url_for('sessions.index') }}" class="{% if request.endpoint == 'sessions.index' %}active{% endif %}">Sessions</a>
             <a href="{{ url_for('devices.index') }}" class="{% if request.endpoint == 'devices.index' %}active{% endif %}">Devices</a>
             <a href="{{ url_for('system.index') }}" class="{% if request.endpoint == 'system.index' %}active{% endif %}">System</a>
-            <a href="#" class="disabled" title="Phase 2">Position</a>
+            <a href="{{ url_for('position.index') }}" class="{% if request.endpoint == 'position.index' %}active{% endif %}">Position</a>
         </div>
         <div class="nav-status">
             {% if active_session_global %}
