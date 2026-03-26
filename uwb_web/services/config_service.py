@@ -38,6 +38,10 @@ def set_defaults():
         'store_raw_lines': 'true',
         'retention_days_raw': '30',
         'retention_days_measurements': '365',
+        'motion_host': '127.0.0.1',
+        'motion_port': '5001',
+        'motion_connect_timeout': '2.0',
+        'motion_read_timeout': '10.0',
     }
     for key, value in defaults.items():
         if not db.session.get(AppConfig, key):

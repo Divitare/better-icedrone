@@ -82,7 +82,8 @@ class TestMotionClient(unittest.TestCase):
         cls.server.stop()
 
     def setUp(self):
-        self.client = MotionClient('127.0.0.1', self.server.port, timeout=3.0)
+        self.client = MotionClient('127.0.0.1', self.server.port,
+                                   connect_timeout=2.0, read_timeout=3.0)
 
     def tearDown(self):
         self.client.close()
@@ -111,7 +112,7 @@ class TestMotionClient(unittest.TestCase):
         self.assertEqual(r['status'], 'ok')
 
     def test_connection_refused(self):
-        bad = MotionClient('127.0.0.1', 1, timeout=1.0)
+        bad = MotionClient('127.0.0.1', 1, connect_timeout=0.5, read_timeout=1.0)
         with self.assertRaises(Exception):
             bad.get_status()
         bad.close()
@@ -134,7 +135,8 @@ class TestMotionRoutes(unittest.TestCase):
         self.app.config['UWB']['motion'] = {
             'host': '127.0.0.1',
             'port': self.server.port,
-            'timeout': 3.0,
+            'connect_timeout': 2.0,
+            'read_timeout': 3.0,
         }
         self.http = self.app.test_client()
         with self.app.app_context():
@@ -143,16 +145,20 @@ class TestMotionRoutes(unittest.TestCase):
             admin.set_password('adminpw')
             db.session.add(admin)
             db.session.commit()
+            # Seed DB config so _read_motion_cfg picks up the fake port
+            from uwb_web.services.config_service import set_config
+            set_config('motion_host', '127.0.0.1')
+            set_config('motion_port', str(self.server.port))
+            set_config('motion_connect_timeout', '2.0')
+            set_config('motion_read_timeout', '3.0')
         self.http.post('/login', data={'username': 'admin', 'password': 'adminpw'})
         # Reset the lazy singleton for fresh client per test class
         import uwb_web.routes.motion as motion_mod
-        motion_mod._client = None
+        motion_mod._reset_client()
 
     def tearDown(self):
         import uwb_web.routes.motion as motion_mod
-        if motion_mod._client:
-            motion_mod._client.close()
-        motion_mod._client = None
+        motion_mod._reset_client()
         with self.app.app_context():
             db.session.remove()
             db.engine.dispose()
@@ -177,6 +183,32 @@ class TestMotionRoutes(unittest.TestCase):
         r = self.http.post('/motion/api/stop')
         data = r.get_json()
         self.assertEqual(data['status'], 'ok')
+
+    def test_get_connection_config(self):
+        r = self.http.get('/motion/api/connection')
+        data = r.get_json()
+        self.assertEqual(data['host'], '127.0.0.1')
+        self.assertEqual(data['port'], self.server.port)
+
+    def test_set_connection_config(self):
+        r = self.http.post('/motion/api/connection', json={
+            'host': '192.168.1.50', 'port': 9999,
+            'connect_timeout': 3.0, 'read_timeout': 15.0,
+        })
+        data = r.get_json()
+        self.assertEqual(data['status'], 'ok')
+        # Verify it persisted
+        r2 = self.http.get('/motion/api/connection')
+        data2 = r2.get_json()
+        self.assertEqual(data2['host'], '192.168.1.50')
+        self.assertEqual(data2['port'], 9999)
+
+    def test_set_connection_invalid_port(self):
+        r = self.http.post('/motion/api/connection', json={
+            'host': '10.0.0.1', 'port': 99999,
+            'connect_timeout': 2.0, 'read_timeout': 10.0,
+        })
+        self.assertEqual(r.status_code, 400)
 
 
 if __name__ == '__main__':

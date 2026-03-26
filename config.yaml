@@ -31,5 +31,6 @@ demo:
 
 motion:
   host: 127.0.0.1       # isel iMC-S8 controller API host
-  port: 5000             # TCP port of the controller's ApiServer
-  timeout: 10.0          # Socket timeout in seconds
+  port: 5001             # TCP port of the controller's ApiServer (default 5000 conflicts with web)
+  connect_timeout: 2.0   # Seconds to wait when connecting to the controller
+  read_timeout: 10.0     # Seconds to wait for a response after sending a command

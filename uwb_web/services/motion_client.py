@@ -3,20 +3,27 @@
 import json
 import socket
 import threading
+import time
 import logging
 
 logger = logging.getLogger(__name__)
+
+# How long to suppress reconnection attempts after a failure (seconds).
+_BACKOFF_SECONDS = 3.0
 
 
 class MotionClient:
     """Thread-safe TCP client that talks to the isel controller's JSON API."""
 
-    def __init__(self, host='127.0.0.1', port=5000, timeout=10.0):
+    def __init__(self, host='127.0.0.1', port=5001, connect_timeout=2.0,
+                 read_timeout=10.0):
         self.host = host
         self.port = port
-        self.timeout = timeout
+        self.connect_timeout = connect_timeout
+        self.read_timeout = read_timeout
         self._lock = threading.Lock()
         self._sock = None
+        self._last_fail: float = 0.0  # monotonic timestamp of last connect failure
 
     # ------------------------------------------------------------------
     # Connection management
@@ -26,10 +33,27 @@ class MotionClient:
         """Open a TCP socket if not already connected."""
         if self._sock is not None:
             return
+
+        # Fast-fail: if we failed recently, don't even try
+        if self._last_fail and (time.monotonic() - self._last_fail) < _BACKOFF_SECONDS:
+            raise ConnectionRefusedError(
+                f'Motion controller at {self.host}:{self.port} unreachable '
+                f'(backoff {_BACKOFF_SECONDS}s)'
+            )
+
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(self.timeout)
-        sock.connect((self.host, self.port))
-        self._sock = sock
+        try:
+            # Short connect timeout so we don't block the whole server
+            sock.settimeout(self.connect_timeout)
+            sock.connect((self.host, self.port))
+            # After connecting, use the longer read timeout
+            sock.settimeout(self.read_timeout)
+            self._sock = sock
+            self._last_fail = 0.0
+        except Exception:
+            sock.close()
+            self._last_fail = time.monotonic()
+            raise
 
     def _disconnect(self):
         if self._sock:
@@ -101,3 +125,4 @@ class MotionClient:
 
     def close(self):
         self._disconnect()
+        self._last_fail = 0.0

@@ -34,8 +34,9 @@ DEFAULT_CONFIG = {
     },
     'motion': {
         'host': '127.0.0.1',
-        'port': 5000,
-        'timeout': 10.0,
+        'port': 5001,
+        'connect_timeout': 2.0,
+        'read_timeout': 10.0,
     },
 }
 

@@ -65,6 +65,34 @@
         }).catch(function (e) { addLog('ERR ' + e); });
     };
 
+    window.saveConnection = function () {
+        var body = {
+            host: document.getElementById('cfg-host').value.trim(),
+            port: parseInt(document.getElementById('cfg-port').value) || 5001,
+            connect_timeout: parseFloat(document.getElementById('cfg-ctimeout').value) || 2.0,
+            read_timeout: parseFloat(document.getElementById('cfg-rtimeout').value) || 10.0
+        };
+        var msgEl = document.getElementById('cfg-msg');
+        msgEl.textContent = 'Saving…';
+        msgEl.style.color = 'var(--text-muted)';
+        addLog('>> connection ' + body.host + ':' + body.port);
+        apiCall('/motion/api/connection', 'POST', body).then(function (r) {
+            if (r.status === 'ok') {
+                msgEl.textContent = 'Saved ✓';
+                msgEl.style.color = 'var(--green)';
+                addLog('<< ' + (r.msg || 'ok'));
+            } else {
+                msgEl.textContent = r.msg || 'Error';
+                msgEl.style.color = 'var(--red)';
+                addLog('<< ERR ' + (r.msg || 'error'));
+            }
+        }).catch(function (e) {
+            msgEl.textContent = 'Failed';
+            msgEl.style.color = 'var(--red)';
+            addLog('ERR ' + e);
+        });
+    };
+
     window.startGrid = function () {
         var body = {
             x: { start: val('gx-start'), space: val('gx-space'), n: parseInt(document.getElementById('gx-n').value) || 1 },
@@ -85,6 +113,8 @@
 
     // ---- Status polling ----
 
+    var pollInFlight = false;
+
     function setText(id, v) { document.getElementById(id).textContent = v; }
 
     function updatePos(pos) {
@@ -95,7 +125,10 @@
     }
 
     function pollStatus() {
+        if (pollInFlight) return; // don't stack requests
+        pollInFlight = true;
         apiCall('/motion/api/status', 'GET').then(function (r) {
+            pollInFlight = false;
             var dot = document.getElementById('conn-dot');
             var txt = document.getElementById('conn-text');
 
@@ -118,14 +151,15 @@
 
             if (s.pos) updatePos(s.pos);
         }).catch(function () {
+            pollInFlight = false;
             var dot = document.getElementById('conn-dot');
             dot.className = 'conn-dot err';
             document.getElementById('conn-text').textContent = 'Controller unreachable';
         });
     }
 
-    // Poll every 500 ms
+    // Poll every 1s (safe interval — previous request must finish first)
     pollStatus();
-    pollInterval = setInterval(pollStatus, 500);
+    pollInterval = setInterval(pollStatus, 1000);
 
 })();
