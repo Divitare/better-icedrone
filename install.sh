@@ -94,6 +94,8 @@ clone_repo() {
 pull_updates() {
     info "Pulling latest changes..."
     cd "${INSTALL_DIR}"
+    # Running as root via sudo — mark the install dir as safe for git
+    git config --global --add safe.directory "${INSTALL_DIR}" 2>/dev/null || true
     # Stash any local changes to config
     git stash --include-untracked 2>/dev/null || true
     git fetch origin "${BRANCH}"
