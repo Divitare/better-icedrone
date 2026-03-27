@@ -217,6 +217,7 @@ _ENGINE_DEFAULTS = {
     'nlos_threshold': 0.5,
     'process_noise': 0.1,
     'range_var': 0.1,
+    'tag_z': 0.0,
 }
 
 
@@ -239,6 +240,7 @@ def api_engine_set():
         'nlos_threshold': float(data.get('nlos_threshold', 0.5)),
         'process_noise': float(data.get('process_noise', 0.1)),
         'range_var': float(data.get('range_var', 0.1)),
+        'tag_z': float(data.get('tag_z', 0.0)),
     }
     from uwb_web.services.config_service import set_config
     set_config('engine_settings', json.dumps(cfg))

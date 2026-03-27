@@ -321,6 +321,10 @@
                     <label class="has-tip" data-tip="Default measurement noise per range (m²). Used when no calibration data is available for an anchor. After calibration, per-anchor variances from std_error are used instead. Recommended: 0.01–0.5.">Range Variance (m²)</label>
                     <input type="number" id="eng-rv" value="0.1" min="0.001" step="0.01" style="width: 70px;" onchange="saveEngine()" title="0.01 = high trust in ranges, 0.1 = typical, 0.5 = noisy environment">
                 </div>
+                <div class="param-group">
+                    <label class="has-tip" data-tip="Height of the UWB tag above the floor (metres). Used to project 3-D slant ranges from ceiling-mounted anchors down to 2-D horizontal distances. Set to 0 if tag is on the ground.">Tag Height (m)</label>
+                    <input type="number" id="eng-tz" value="0" min="0" step="0.01" style="width: 70px;" onchange="saveEngine()" title="Height of the tag in metres (e.g. 0.15 if on a table)">
+                </div>
             </div>
             <button class="btn btn-sm btn-secondary" onclick="resetEKF()" style="margin-top: 4px;" title="Discard current EKF state and start fresh — use after manually repositioning the tag">Reset EKF</button>
             <span id="eng-msg" style="font-size: 11px; margin-left: 6px;"></span>

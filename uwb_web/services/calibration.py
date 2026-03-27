@@ -705,9 +705,16 @@ class CalibrationRunner:
     def _simulate_corrected_stats(self, points_data, anchors, corrections):
         """Re-run trilateration with corrected ranges and compute position stats."""
         from uwb_web.services.trilateration import estimate_position_2d
+        from uwb_web.services.position_engine import _project_ranges_2d
+        from uwb_web.services.config_service import get_config
 
         corrected_pts = []
         anchors_2d = {did: (a['x'], a['y']) for did, a in anchors.items()}
+        anchor_z = {did: a['z'] for did, a in anchors.items() if a.get('z') is not None}
+        raw_cfg = get_config('engine_settings')
+        tag_z = 0.0
+        if raw_cfg:
+            tag_z = json.loads(raw_cfg).get('tag_z', 0.0)
 
         for pt in points_data:
             raw_ranges = pt.get('ranges') or {}
@@ -722,6 +729,7 @@ class CalibrationRunner:
                     r = apply_range_correction(r, c['bias'], c['scale'])
                 corrected_ranges[did] = r
 
+            corrected_ranges = _project_ranges_2d(corrected_ranges, anchor_z, tag_z)
             pos = estimate_position_2d(corrected_ranges, anchors_2d)
             corrected_pts.append({
                 'true_x': pt['true_x'],

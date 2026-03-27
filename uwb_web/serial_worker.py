@@ -469,11 +469,14 @@ class SerialWorker:
 
                 anchors_2d = {}
                 anchors_3d = {}
+                anchor_z = {}
                 for d in Device.query.filter_by(is_anchor=True).all():
                     if d.x is not None and d.y is not None:
                         anchors_2d[d.id] = (d.x, d.y)
                         if d.z is not None:
                             anchors_3d[d.id] = (d.x, d.y, d.z)
+                            anchor_z[d.id] = d.z
+                self._engine.set_anchor_heights(anchor_z)
 
                 # Apply calibration corrections if enabled
                 ranges_for_pos = correct_ranges(
@@ -504,11 +507,13 @@ class SerialWorker:
                     return
 
                 # Fallback to basic trilateration
+                from uwb_web.services.position_engine import _project_ranges_2d
+                projected = _project_ranges_2d(ranges_for_pos, anchor_z, self._engine.tag_z)
                 pos = None
                 if len(anchors_3d) >= 4:
-                    pos = estimate_position_3d(ranges_for_pos, anchors_3d)
+                    pos = estimate_position_3d(projected, anchors_3d)
                 if pos is None and len(anchors_2d) >= 3:
-                    pos = estimate_position_2d(ranges_for_pos, anchors_2d)
+                    pos = estimate_position_2d(projected, anchors_2d)
 
                 if pos is not None:
                     entry = {'x': pos[0], 'y': pos[1], 'ts': now_utc.isoformat()}

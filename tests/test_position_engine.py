@@ -12,6 +12,7 @@ from uwb_web.services.position_engine import (
     _wls_trilaterate,
     _nlos_rejection,
     _EKF2D,
+    _project_ranges_2d,
     smooth_trajectory,
     build_anchor_weights,
 )
@@ -90,6 +91,70 @@ class TestWLSTrilaterate(unittest.TestCase):
             cy = np.mean([anchors[d][1] for d in anchors])
             max_r = max(ranges.values())
             self.assertLess(abs(pos[0] - cx), max_r * 3)
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Z-height projection
+# ──────────────────────────────────────────────────────────────────────
+
+class TestProjectRanges2D(unittest.TestCase):
+
+    def test_no_heights_returns_same(self):
+        """Without anchor z info, ranges pass through unchanged."""
+        ranges = {1: 5.0, 2: 3.0}
+        result = _project_ranges_2d(ranges, {}, 0.0)
+        self.assertEqual(result, ranges)
+
+    def test_same_height_unchanged(self):
+        """Anchor at same height as tag -- no projection needed."""
+        ranges = {1: 5.0}
+        result = _project_ranges_2d(ranges, {1: 0.0}, 0.0)
+        self.assertAlmostEqual(result[1], 5.0)
+
+    def test_known_projection(self):
+        """Anchor at z=3m, tag at z=0, slant=5m -> horizontal=4m (3-4-5)."""
+        ranges = {1: 5.0}
+        result = _project_ranges_2d(ranges, {1: 3.0}, 0.0)
+        self.assertAlmostEqual(result[1], 4.0, places=6)
+
+    def test_range_smaller_than_dz_clamps(self):
+        """If slant range < dz (impossible but noisy), keep original."""
+        ranges = {1: 2.0}
+        result = _project_ranges_2d(ranges, {1: 3.0}, 0.0)
+        self.assertAlmostEqual(result[1], 2.0)
+
+    def test_tag_z_offset(self):
+        """Tag at 1m, anchor at 4m -> dz=3m, slant=5 -> horiz=4."""
+        ranges = {1: 5.0}
+        result = _project_ranges_2d(ranges, {1: 4.0}, 1.0)
+        self.assertAlmostEqual(result[1], 4.0, places=6)
+
+    def test_engine_with_z_projection(self):
+        """Full pipeline: engine with height info should put tag at centre."""
+        # Anchors at z=3m in a square, tag at z=0 in the centre
+        anchors_2d = {1: (0, 0), 2: (10, 0), 3: (10, 10), 4: (0, 10)}
+        anchor_z = {1: 3.0, 2: 3.0, 3: 3.0, 4: 3.0}
+        tag_2d = (5.0, 5.0)
+        tag_z = 0.0
+
+        # Compute 3D slant ranges
+        slant_ranges = {}
+        for did, (ax, ay) in anchors_2d.items():
+            dx = tag_2d[0] - ax
+            dy = tag_2d[1] - ay
+            dz = tag_z - anchor_z[did]
+            slant_ranges[did] = math.sqrt(dx**2 + dy**2 + dz**2)
+
+        engine = PositionEngine()
+        engine.ekf_enabled = False
+        engine.nlos_rejection_enabled = False
+        engine.set_anchor_heights(anchor_z)
+        engine.tag_z = tag_z
+
+        result = engine.update(slant_ranges, anchors_2d, dt=0.1)
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(result['x'], 5.0, places=1)
+        self.assertAlmostEqual(result['y'], 5.0, places=1)
 
 
 # ──────────────────────────────────────────────────────────────────────

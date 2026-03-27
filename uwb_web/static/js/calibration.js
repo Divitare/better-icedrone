@@ -253,6 +253,7 @@
             document.getElementById('eng-nlos-thr').value = cfg.nlos_threshold || 0.5;
             document.getElementById('eng-pn').value = cfg.process_noise || 0.1;
             document.getElementById('eng-rv').value = cfg.range_var || 0.1;
+            document.getElementById('eng-tz').value = cfg.tag_z || 0;
         });
     }
 
@@ -263,6 +264,7 @@
             nlos_threshold: val('eng-nlos-thr'),
             process_noise: val('eng-pn'),
             range_var: val('eng-rv'),
+            tag_z: val('eng-tz'),
         };
         var msg = document.getElementById('eng-msg');
         api('/calibration/api/engine', 'POST', body).then(function (r) {

@@ -47,6 +47,7 @@ class PositionEngine:
     def __init__(self):
         self._ekf = None
         self._anchor_weights = {}   # device_id → {'variance': float, 'weight': float}
+        self._anchor_z = {}         # device_id → z (metres)
         self._last_update_t = None
         self._lock = threading.Lock()
 
@@ -58,6 +59,7 @@ class PositionEngine:
         self.ekf_initial_pos_var = 1.0        # m²
         self.ekf_initial_vel_var = 0.5        # (m/s)²
         self.default_range_var = 0.1          # m² — used when no calibration data
+        self.tag_z = 0.0                      # tag height (metres)
 
     # -- configuration --------------------------------------------------
 
@@ -65,6 +67,11 @@ class PositionEngine:
         """weights: {device_id: {'variance': float, 'weight': float}}"""
         with self._lock:
             self._anchor_weights = dict(weights)
+
+    def set_anchor_heights(self, anchor_z):
+        """anchor_z: {device_id: z_metres}"""
+        with self._lock:
+            self._anchor_z = dict(anchor_z)
 
     def load_settings(self, cfg):
         """Load settings dict (from DB / API)."""
@@ -78,6 +85,8 @@ class PositionEngine:
             self.ekf_process_noise = float(cfg['process_noise'])
         if 'range_var' in cfg:
             self.default_range_var = float(cfg['range_var'])
+        if 'tag_z' in cfg:
+            self.tag_z = float(cfg['tag_z'])
 
     def reset(self):
         """Discard EKF state (call after tag repositioning / settings change)."""
@@ -109,6 +118,9 @@ class PositionEngine:
                      if did in anchors_2d and r is not None and r > 0}
         if len(available) < 3:
             return None
+
+        # Project 3-D slant ranges to 2-D horizontal ranges
+        available = _project_ranges_2d(available, self._anchor_z, self.tag_z)
 
         weights = {}
         for did in available:
@@ -195,6 +207,28 @@ class PositionEngine:
 # ──────────────────────────────────────────────────────────────────────
 # Weighted least-squares trilateration
 # ──────────────────────────────────────────────────────────────────────
+
+def _project_ranges_2d(ranges, anchor_z, tag_z):
+    """
+    Convert 3-D slant ranges to 2-D horizontal ranges.
+
+    UWB measures line-of-sight (3-D) distance.  When doing 2-D
+    trilateration the vertical component must be removed:
+        r_horiz = sqrt(r_slant² - Δz²)
+    """
+    if not anchor_z:
+        return ranges
+    projected = {}
+    for did, r in ranges.items():
+        az = anchor_z.get(did)
+        if az is not None:
+            dz = az - tag_z
+            r_sq = r * r - dz * dz
+            projected[did] = math.sqrt(r_sq) if r_sq > 0 else r
+        else:
+            projected[did] = r
+    return projected
+
 
 def _wls_trilaterate(ranges, anchors, weights):
     """
