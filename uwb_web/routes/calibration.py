@@ -318,6 +318,206 @@ def api_smooth():
 
 
 # ------------------------------------------------------------------
+# Coordinate-frame alignment & anchor refinement
+# ------------------------------------------------------------------
+
+@bp.route('/api/auto-origin', methods=['POST'])
+def api_auto_origin():
+    """
+    Estimate the rigid transform (rotation + translation + scale) from
+    motion-controller coordinates to UWB room coordinates.
+
+    Uses a completed calibration run's grid points (mm, precise relative
+    positions from the motion controller) and the UWB-estimated positions
+    at each grid point.
+
+    Body: { "run_id": int }
+    """
+    from uwb_web.models import CalibrationRun
+    from uwb_web.db import db
+    from uwb_web.services.calibration import estimate_rigid_transform
+
+    data = request.get_json(silent=True) or {}
+    run_id = data.get('run_id')
+    if not run_id:
+        return jsonify({'status': 'error', 'msg': 'run_id required.'}), 400
+
+    run = db.session.get(CalibrationRun, run_id)
+    if not run:
+        return jsonify({'status': 'error', 'msg': 'Run not found.'}), 404
+
+    grid = json.loads(run.grid_config_json) if run.grid_config_json else []
+    points = run.points.all()
+
+    # Build matching pairs: motion mm → UWB metres
+    motion_mm = []
+    uwb_m = []
+    for p in points:
+        if p.uwb_x is None:
+            continue
+        if p.point_index >= len(grid):
+            continue
+        gp = grid[p.point_index]
+        motion_mm.append([gp['x'], gp['y']])
+        uwb_m.append([p.uwb_x, p.uwb_y])
+
+    if len(motion_mm) < 3:
+        return jsonify({'status': 'error',
+                        'msg': 'Need at least 3 points with UWB data.'}), 400
+
+    result = estimate_rigid_transform(motion_mm, uwb_m)
+    if result is None:
+        return jsonify({'status': 'error', 'msg': 'Transform estimation failed.'}), 500
+
+    # Save transform to config for use in future calibration runs
+    from uwb_web.services.config_service import set_config
+    transform = {
+        'R': result['R'],
+        't': result['t'],
+        'scale': result['scale'],
+        'rotation_deg': result['rotation_deg'],
+        'source_run_id': run_id,
+    }
+    set_config('coordinate_transform', json.dumps(transform))
+
+    return jsonify({'status': 'ok', **result})
+
+
+@bp.route('/api/auto-origin', methods=['GET'])
+def api_auto_origin_get():
+    """Return the stored coordinate transform (if any)."""
+    from uwb_web.services.config_service import get_config
+    raw = get_config('coordinate_transform')
+    if not raw:
+        return jsonify({'status': 'none', 'msg': 'No transform computed yet.'})
+    return jsonify({'status': 'ok', **json.loads(raw)})
+
+
+@bp.route('/api/refine-anchors', methods=['POST'])
+def api_refine_anchors():
+    """
+    Refine anchor positions using calibration data.
+
+    Uses the precise tag positions (from the motion controller, transformed
+    to UWB space via the rigid transform) and per-anchor range measurements
+    from a calibration run.
+
+    Body: { "run_id": int }
+    """
+    from uwb_web.models import CalibrationRun, Device
+    from uwb_web.db import db
+    from uwb_web.services.calibration import (
+        estimate_rigid_transform, refine_anchor_positions,
+    )
+
+    data = request.get_json(silent=True) or {}
+    run_id = data.get('run_id')
+    if not run_id:
+        return jsonify({'status': 'error', 'msg': 'run_id required.'}), 400
+
+    run = db.session.get(CalibrationRun, run_id)
+    if not run:
+        return jsonify({'status': 'error', 'msg': 'Run not found.'}), 404
+
+    grid = json.loads(run.grid_config_json) if run.grid_config_json else []
+    points = run.points.all()
+
+    # Step 1: Compute rigid transform from this run's data
+    motion_mm = []
+    uwb_m = []
+    range_data_list = []
+
+    for p in points:
+        if p.uwb_x is None:
+            continue
+        if p.point_index >= len(grid):
+            continue
+        gp = grid[p.point_index]
+        motion_mm.append([gp['x'], gp['y']])
+        uwb_m.append([p.uwb_x, p.uwb_y])
+        rd = json.loads(p.ranges_json) if p.ranges_json else {}
+        # Convert hex-keyed ranges to device_id-keyed
+        rd_by_id = {}
+        for hex_addr, info in rd.items():
+            did = info.get('device_id')
+            if did is not None:
+                rd_by_id[did] = {'mean': info['mean'], 'weight': 1.0}
+        range_data_list.append(rd_by_id)
+
+    if len(motion_mm) < 3:
+        return jsonify({'status': 'error',
+                        'msg': 'Need at least 3 points with UWB data.'}), 400
+
+    transform = estimate_rigid_transform(motion_mm, uwb_m)
+    if transform is None:
+        return jsonify({'status': 'error',
+                        'msg': 'Transform estimation failed.'}), 500
+
+    # Step 2: Compute precise tag positions via the rigid transform
+    import numpy as np
+    from uwb_web.services.calibration import apply_rigid_transform
+    precise_tags = apply_rigid_transform(
+        motion_mm, transform['R'], transform['t'], transform['scale']
+    )
+    tag_positions = [(float(r[0]), float(r[1])) for r in precise_tags]
+
+    # Step 3: Get current anchor positions
+    initial_anchors = {}
+    for d in Device.query.filter_by(is_anchor=True).all():
+        if d.x is not None and d.y is not None:
+            initial_anchors[d.id] = (d.x, d.y)
+
+    if not initial_anchors:
+        return jsonify({'status': 'error', 'msg': 'No anchors with positions.'}), 400
+
+    # Step 4: Refine
+    result = refine_anchor_positions(
+        tag_positions, range_data_list, initial_anchors,
+    )
+    if result is None:
+        return jsonify({'status': 'error',
+                        'msg': 'Not enough data to refine anchors.'}), 400
+
+    return jsonify({'status': 'ok', 'transform': transform, **result})
+
+
+@bp.route('/api/apply-refined-anchors', methods=['POST'])
+def api_apply_refined_anchors():
+    """
+    Apply refined anchor positions to the database.
+
+    Body: { "anchors": {device_id: {"x": float, "y": float}} }
+    """
+    from uwb_web.models import Device
+    from uwb_web.db import db
+
+    data = request.get_json(silent=True) or {}
+    anchors = data.get('anchors', {})
+    if not anchors:
+        return jsonify({'status': 'error', 'msg': 'No anchors provided.'}), 400
+
+    updated = 0
+    for did_str, coords in anchors.items():
+        did = int(did_str)
+        device = db.session.get(Device, did)
+        if device and device.is_anchor:
+            device.x = coords['x']
+            device.y = coords['y']
+            updated += 1
+
+    db.session.commit()
+    logger.info('Applied refined positions for %d anchors', updated)
+
+    # Reload engine so new anchor positions are used
+    from uwb_web import get_serial_worker
+    worker = get_serial_worker()
+    if worker:
+        worker.reload_engine()
+
+    return jsonify({'status': 'ok', 'updated': updated})
+
+
+# ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
 

@@ -77,6 +77,14 @@
     .help-panel ul { padding-left: 16px; }
     .help-panel code { background: var(--bg); padding: 1px 4px; border-radius: 3px; font-size: 11px; font-family: var(--mono); }
     .help-panel .rec { display: inline-block; background: #e8f5e9; color: #2e7d32; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; text-transform: uppercase; }
+
+    /* result boxes */
+    .result-box { background: var(--bg); border-radius: var(--radius); padding: 8px 10px; margin: 6px 0; font-size: 12px; }
+    .result-box .rb-label { font-size: 10px; text-transform: uppercase; color: var(--text-muted); font-weight: 600; }
+    .result-box .rb-val { font-size: 18px; font-weight: 700; font-family: var(--mono); }
+    .anchor-delta-table { width: 100%; font-size: 11px; border-collapse: collapse; margin-top: 6px; }
+    .anchor-delta-table th { text-align: left; padding: 3px 6px; font-size: 10px; color: var(--text-muted); text-transform: uppercase; border-bottom: 2px solid var(--border); }
+    .anchor-delta-table td { padding: 3px 6px; font-family: var(--mono); border-bottom: 1px solid #eee; }
 </style>
 {% endblock %}
 
@@ -212,6 +220,45 @@
                     </tr></thead>
                     <tbody></tbody>
                 </table>
+            </div>
+        </div>
+
+        <!-- Auto-origin & anchor refinement -->
+        <div class="panel" id="alignment-panel" style="display: none;">
+            <h3>Coordinate Alignment
+                <span class="has-tip" data-tip="Automatically compute the rotation, translation, and scale that maps motion-controller coordinates to UWB coordinates — no manual measuring needed. Also refine anchor positions using the precise calibration grid.">&#9432;</span>
+            </h3>
+
+            <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px;">
+                <button class="btn" onclick="autoOrigin()">Estimate Transform</button>
+                <button class="btn btn-secondary" onclick="refineAnchors()">Refine Anchors</button>
+                <span id="align-msg" style="font-size: 12px; align-self: center;"></span>
+            </div>
+
+            <!-- Transform results -->
+            <div id="transform-result" style="display: none;">
+                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">Rigid Transform (Motion → UWB)</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px;">
+                    <div class="result-box"><div class="rb-label">Rotation</div><div class="rb-val" id="tf-rot">—</div></div>
+                    <div class="result-box"><div class="rb-label">Translation</div><div class="rb-val" id="tf-trans" style="font-size: 14px;">—</div></div>
+                    <div class="result-box"><div class="rb-label">RMSE</div><div class="rb-val" id="tf-rmse">—</div></div>
+                </div>
+                <div class="result-box" style="margin-top: 4px;"><div class="rb-label">Scale (should be ≈ 0.001 for mm→m)</div><div class="rb-val" id="tf-scale">—</div></div>
+            </div>
+
+            <!-- Anchor refinement results -->
+            <div id="anchor-refine-result" style="display: none; margin-top: 10px;">
+                <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">Anchor Refinement</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                    <div class="result-box"><div class="rb-label">RMSE Before</div><div class="rb-val" id="ar-before">—</div></div>
+                    <div class="result-box"><div class="rb-label">RMSE After</div><div class="rb-val" id="ar-after">—</div></div>
+                </div>
+                <table class="anchor-delta-table" id="anchor-delta-table">
+                    <thead><tr><th>Anchor</th><th>Old X</th><th>Old Y</th><th>New X</th><th>New Y</th><th>ΔX (m)</th><th>ΔY (m)</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+                <button class="btn btn-sm" onclick="applyRefinedAnchors()" style="margin-top: 8px;">Apply Refined Positions</button>
+                <span id="ar-apply-msg" style="font-size: 11px; margin-left: 6px;"></span>
             </div>
         </div>
 
@@ -351,11 +398,44 @@
                     <li>Enable both <strong>EKF</strong> and <strong>NLOS rejection</strong>.</li>
                     <li>Run a <strong>3 &times; 3</strong> calibration grid covering most of your working area.</li>
                     <li><strong>Apply corrections</strong> — this also loads per-anchor weights into the engine.</li>
+                    <li>Use <strong>Estimate Transform</strong> to auto-compute the origin offset and rotation — much more accurate than measuring by hand.</li>
+                    <li>Use <strong>Refine Anchors</strong> to optimise anchor positions using your calibration data.</li>
                     <li>Start with the defaults (<code>process noise = 0.1</code>, <code>NLOS threshold = 0.5</code>, <code>range var = 0.1</code>).</li>
                     <li>If the position <strong>jumps too much</strong>: lower process noise (e.g. <code>0.05</code>).</li>
                     <li>If the position <strong>lags behind motion</strong>: raise process noise (e.g. <code>0.3</code>).</li>
                     <li>If <strong>good anchors</strong> get dropped: raise NLOS threshold (e.g. <code>0.8</code>).</li>
                     <li>If a <strong>bad anchor</strong> isn't removed: lower NLOS threshold (e.g. <code>0.3</code>).</li>
+                </ul>
+            </details>
+
+            <details>
+                <summary>Auto-Origin (Coordinate Alignment)</summary>
+                <p>Instead of measuring the offset between the motion controller and UWB room origin by hand (which introduces error), the system can compute it automatically from calibration data.</p>
+                <ul>
+                    <li><strong>How it works:</strong> The motion controller moves the tag to a grid of points. The relative positions between grid points are very precise (sub-mm). The UWB system also provides a (noisy) position estimate at each point. An SVD-based Procrustes algorithm finds the optimal <strong>rotation + translation + scale</strong> that aligns the two coordinate frames.</li>
+                    <li><strong>What it replaces:</strong> The manual Origin X/Y/Z offset. After running this, the origin offset is computed to sub-centimetre accuracy rather than relying on a tape measure.</li>
+                    <li><strong>When to use:</strong> After completing a calibration run. You can set Origin to (0, 0, 0) and let auto-origin handle the alignment.</li>
+                    <li><strong>Scale factor:</strong> Should be very close to <code>0.001</code> since input is mm and output is metres. A large deviation may indicate a setup issue.</li>
+                </ul>
+            </details>
+
+            <details>
+                <summary>Anchor Position Refinement</summary>
+                <p>Anchor positions are typically measured by hand with a tape measure — this can easily be off by several centimetres. Since the calibration grid provides <strong>precise relative tag positions</strong> and <strong>per-anchor range measurements</strong>, we can optimise the anchor coordinates to better explain all the observed ranges.</p>
+                <ul>
+                    <li><strong>How it works:</strong> A Gauss-Newton optimiser adjusts each anchor's (x, y) position to minimise the total range residual across all calibration points. The tag positions are held fixed (they come from the precise motion controller + rigid transform).</li>
+                    <li><strong>Typical improvement:</strong> 2–10 cm shift per anchor, depending on how precisely you measured them initially.</li>
+                    <li><strong>Workflow:</strong>
+                        <ol>
+                            <li>Run a calibration grid (3&times;3 or larger)</li>
+                            <li>Click <strong>Estimate Transform</strong> to auto-compute the origin</li>
+                            <li>Click <strong>Refine Anchors</strong> to optimise anchor positions</li>
+                            <li>Review the deltas (&Delta;X, &Delta;Y) — they should be reasonable (a few cm)</li>
+                            <li>Click <strong>Apply Refined Positions</strong> to save to the database</li>
+                            <li>Re-run calibration or <strong>Apply Corrections</strong> to recompute range corrections with the improved anchors</li>
+                        </ol>
+                    </li>
+                    <li><strong>Caution:</strong> If the grid is very small relative to the room, the refinement may not fully constrain distant anchors. Use the largest practical grid.</li>
                 </ul>
             </details>
         </div>

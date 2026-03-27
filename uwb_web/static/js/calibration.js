@@ -337,4 +337,119 @@
         });
     }
 
+    // ---- Auto-origin (coordinate alignment) ----
+
+    var lastRefinement = null;  // stashed for "Apply Refined Positions"
+
+    window.autoOrigin = function () {
+        if (!currentRunId) { alert('Select a calibration run first.'); return; }
+        var msg = document.getElementById('align-msg');
+        msg.textContent = 'Computing…';
+        msg.style.color = 'var(--text-muted)';
+        document.getElementById('alignment-panel').style.display = '';
+
+        api('/calibration/api/auto-origin', 'POST', { run_id: currentRunId }).then(function (r) {
+            if (r.status !== 'ok') {
+                msg.textContent = r.msg || 'Error';
+                msg.style.color = 'var(--red)';
+                return;
+            }
+            msg.textContent = 'Transform saved ✓';
+            msg.style.color = 'var(--green)';
+            showTransform(r.transform);
+        }).catch(function () {
+            msg.textContent = 'Failed';
+            msg.style.color = 'var(--red)';
+        });
+    };
+
+    function showTransform(tf) {
+        document.getElementById('transform-result').style.display = '';
+        setText('tf-rot', tf.rotation_deg.toFixed(2) + '°');
+        setText('tf-trans', '(' + tf.translation_m[0].toFixed(4) + ', ' + tf.translation_m[1].toFixed(4) + ')');
+        setText('tf-scale', tf.scale.toFixed(6));
+        setText('tf-rmse', tf.rmse_m.toFixed(4) + ' m');
+    }
+
+    window.refineAnchors = function () {
+        if (!currentRunId) { alert('Select a calibration run first.'); return; }
+        var msg = document.getElementById('align-msg');
+        msg.textContent = 'Refining…';
+        msg.style.color = 'var(--text-muted)';
+        document.getElementById('alignment-panel').style.display = '';
+
+        api('/calibration/api/refine-anchors', 'POST', { run_id: currentRunId }).then(function (r) {
+            if (r.status !== 'ok') {
+                msg.textContent = r.msg || 'Error';
+                msg.style.color = 'var(--red)';
+                return;
+            }
+            msg.textContent = 'Done ✓';
+            msg.style.color = 'var(--green)';
+
+            // Show transform if present
+            if (r.transform) showTransform(r.transform);
+
+            // Show anchor refinement
+            var ref = r.refinement;
+            lastRefinement = ref;
+            document.getElementById('anchor-refine-result').style.display = '';
+            setText('ar-before', ref.rmse_before.toFixed(4) + ' m');
+            setText('ar-after', ref.rmse_after.toFixed(4) + ' m');
+
+            var tbody = document.querySelector('#anchor-delta-table tbody');
+            tbody.innerHTML = '';
+            var anchors = ref.anchors || {};
+            Object.keys(anchors).forEach(function (did) {
+                var a = anchors[did];
+                var tr = document.createElement('tr');
+                tr.innerHTML = '<td>' + (a.hex || did) + '</td>'
+                    + '<td>' + (a.old_x != null ? a.old_x.toFixed(3) : '—') + '</td>'
+                    + '<td>' + (a.old_y != null ? a.old_y.toFixed(3) : '—') + '</td>'
+                    + '<td>' + a.x.toFixed(3) + '</td>'
+                    + '<td>' + a.y.toFixed(3) + '</td>'
+                    + '<td>' + a.dx.toFixed(4) + '</td>'
+                    + '<td>' + a.dy.toFixed(4) + '</td>';
+                tbody.appendChild(tr);
+            });
+        }).catch(function () {
+            msg.textContent = 'Failed';
+            msg.style.color = 'var(--red)';
+        });
+    };
+
+    window.applyRefinedAnchors = function () {
+        if (!lastRefinement) { alert('Run "Refine Anchors" first.'); return; }
+        var anchors = {};
+        var src = lastRefinement.anchors || {};
+        Object.keys(src).forEach(function (did) {
+            anchors[did] = { x: src[did].x, y: src[did].y };
+        });
+        var applyMsg = document.getElementById('ar-apply-msg');
+        applyMsg.textContent = 'Saving…';
+        applyMsg.style.color = 'var(--text-muted)';
+
+        api('/calibration/api/apply-refined-anchors', 'POST', { anchors: anchors }).then(function (r) {
+            if (r.status === 'ok') {
+                applyMsg.textContent = 'Applied ✓';
+                applyMsg.style.color = 'var(--green)';
+            } else {
+                applyMsg.textContent = r.msg || 'Error';
+                applyMsg.style.color = 'var(--red)';
+            }
+        }).catch(function () {
+            applyMsg.textContent = 'Failed';
+            applyMsg.style.color = 'var(--red)';
+        });
+    };
+
+    // Show alignment panel when a run is loaded
+    var _origShowResults = showResults;
+    showResults = function (run) {
+        _origShowResults(run);
+        if (run.results) {
+            document.getElementById('alignment-panel').style.display = '';
+        }
+    };
+
 })();

@@ -17,6 +17,9 @@ from uwb_web.services.calibration import (
     correct_ranges,
     get_active_corrections,
     invalidate_corrections_cache,
+    estimate_rigid_transform,
+    apply_rigid_transform,
+    refine_anchor_positions,
 )
 
 
@@ -145,6 +148,167 @@ class TestCorrectRanges(unittest.TestCase):
         ranges = {1: None}
         result = correct_ranges(ranges, {1: {'bias': 0.5, 'scale': 1.0}})
         self.assertIsNone(result[1])
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Rigid transform tests
+# ──────────────────────────────────────────────────────────────────────
+
+class TestEstimateRigidTransform(unittest.TestCase):
+
+    def test_identity_transform(self):
+        """When motion mm == UWB m numerically (scale=1), rotation ≈ 0."""
+        pts = [[0, 0], [1, 0], [0, 1], [1, 1]]
+        result = estimate_rigid_transform(pts, pts)
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(result['rotation_deg'], 0.0, places=1)
+        self.assertAlmostEqual(result['scale'], 1.0, places=4)
+        self.assertAlmostEqual(result['rmse_m'], 0.0, places=6)
+
+    def test_known_translation(self):
+        """Pure translation (scale=1) is recovered."""
+        motion = [[0, 0], [100, 0], [0, 100], [100, 100]]
+        uwb = [[tx + 5.0, ty + 3.0] for tx, ty in motion]
+        result = estimate_rigid_transform(motion, uwb)
+        self.assertAlmostEqual(result['rotation_deg'], 0.0, places=1)
+        self.assertAlmostEqual(result['scale'], 1.0, places=4)
+        self.assertAlmostEqual(result['translation_m'][0], 5.0, places=3)
+        self.assertAlmostEqual(result['translation_m'][1], 3.0, places=3)
+        self.assertAlmostEqual(result['rmse_m'], 0.0, places=6)
+
+    def test_mm_to_m_scale(self):
+        """Motion in mm, UWB in m → scale ≈ 0.001."""
+        motion_mm = [[0, 0], [1000, 0], [0, 1000], [1000, 1000]]
+        uwb_m = [[0, 0], [1, 0], [0, 1], [1, 1]]
+        result = estimate_rigid_transform(motion_mm, uwb_m)
+        self.assertAlmostEqual(result['scale'], 0.001, places=5)
+        self.assertAlmostEqual(result['rmse_m'], 0.0, places=5)
+
+    def test_known_90deg_rotation(self):
+        """90° rotation is recovered."""
+        motion = [[0, 0], [1, 0], [0, 1], [1, 1]]
+        # Rotate 90° CCW: (x, y) → (-y, x)
+        uwb = [[-y, x] for x, y in motion]
+        result = estimate_rigid_transform(motion, uwb)
+        self.assertAlmostEqual(abs(result['rotation_deg']), 90.0, places=1)
+        self.assertAlmostEqual(result['scale'], 1.0, places=4)
+        self.assertAlmostEqual(result['rmse_m'], 0.0, places=5)
+
+    def test_combined_scale_rotation_translation(self):
+        """Combined transform is recovered."""
+        motion_mm = [[0, 0], [1000, 0], [500, 500]]
+        # scale 0.001, 45° rotation, translation (2, 3)
+        angle = math.radians(45)
+        s = 0.001
+        tx, ty = 2.0, 3.0
+        uwb_m = []
+        for mx, my in motion_mm:
+            ux = s * (math.cos(angle) * mx - math.sin(angle) * my) + tx
+            uy = s * (math.sin(angle) * mx + math.cos(angle) * my) + ty
+            uwb_m.append([ux, uy])
+        result = estimate_rigid_transform(motion_mm, uwb_m)
+        self.assertAlmostEqual(result['rotation_deg'], 45.0, places=1)
+        self.assertAlmostEqual(result['scale'], 0.001, places=5)
+        self.assertAlmostEqual(result['translation_m'][0], tx, places=3)
+        self.assertAlmostEqual(result['translation_m'][1], ty, places=3)
+        self.assertAlmostEqual(result['rmse_m'], 0.0, places=5)
+
+    def test_returns_none_insufficient_points(self):
+        """Fewer than 3 points returns None."""
+        result = estimate_rigid_transform([[0, 0], [1, 0]], [[0, 0], [1, 0]])
+        self.assertIsNone(result)
+
+    def test_per_point_errors(self):
+        """per_point_error_m has one entry per point."""
+        pts = [[0, 0], [1, 0], [0, 1], [1, 1]]
+        result = estimate_rigid_transform(pts, pts)
+        self.assertEqual(len(result['per_point_error_m']), 4)
+        for e in result['per_point_error_m']:
+            self.assertAlmostEqual(e, 0.0, places=6)
+
+
+class TestApplyRigidTransform(unittest.TestCase):
+
+    def test_identity(self):
+        """Identity R, zero t, scale 1 returns same points."""
+        pts = [[100, 200], [300, 400]]
+        R = [[1, 0], [0, 1]]
+        t = [0, 0]
+        out = apply_rigid_transform(pts, R, t, 1.0)
+        np.testing.assert_allclose(out, pts, atol=1e-9)
+
+    def test_scale_only(self):
+        """Scale 0.001 converts mm to m."""
+        pts = [[1000, 2000]]
+        R = [[1, 0], [0, 1]]
+        t = [0, 0]
+        out = apply_rigid_transform(pts, R, t, 0.001)
+        np.testing.assert_allclose(out, [[1.0, 2.0]], atol=1e-9)
+
+    def test_roundtrip(self):
+        """estimate + apply should produce the UWB positions."""
+        motion_mm = [[0, 0], [500, 0], [0, 300], [500, 300]]
+        uwb_m = [[1, 2], [1.5, 2], [1, 2.3], [1.5, 2.3]]
+        tf = estimate_rigid_transform(motion_mm, uwb_m)
+        out = apply_rigid_transform(motion_mm, tf['R'], tf['t'], tf['scale'])
+        np.testing.assert_allclose(out, uwb_m, atol=1e-4)
+
+
+class TestRefineAnchorPositions(unittest.TestCase):
+
+    def _make_range_data(self, tag_positions, anchor_positions):
+        """Build range_data from true tag–anchor distances."""
+        rd = []
+        for tx, ty in tag_positions:
+            obs = {}
+            for aid, (ax, ay) in anchor_positions.items():
+                d = math.sqrt((tx - ax)**2 + (ty - ay)**2)
+                obs[aid] = {'mean': d, 'weight': 1.0}
+            rd.append(obs)
+        return rd
+
+    def test_perfect_data_converges(self):
+        """With perfect ranges from true anchors, refinement stays put."""
+        true_anchors = {1: (0, 0), 2: (5, 0), 3: (2.5, 4)}
+        tags = [(1, 1), (2, 2), (3, 1), (4, 3)]
+        rd = self._make_range_data(tags, true_anchors)
+        result = refine_anchor_positions(tags, rd, true_anchors)
+        self.assertIsNotNone(result)
+        self.assertAlmostEqual(result['rmse_before'], 0.0, places=4)
+        self.assertAlmostEqual(result['rmse_after'], 0.0, places=4)
+        for aid in true_anchors:
+            self.assertAlmostEqual(result['anchors'][aid]['dx'], 0.0, places=3)
+            self.assertAlmostEqual(result['anchors'][aid]['dy'], 0.0, places=3)
+
+    def test_offset_anchors_are_corrected(self):
+        """Starting from offset anchors, refinement moves towards truth."""
+        true_anchors = {1: (0, 0), 2: (5, 0), 3: (2.5, 4)}
+        offset_anchors = {1: (0.05, -0.03), 2: (5.1, 0.04), 3: (2.55, 3.92)}
+        tags = [(1, 1), (2, 2), (3, 1), (4, 3), (1.5, 0.5), (3.5, 2.5)]
+        rd = self._make_range_data(tags, true_anchors)  # ranges from TRUE positions
+        result = refine_anchor_positions(tags, rd, offset_anchors)
+        self.assertIsNotNone(result)
+        # RMSE should improve
+        self.assertLess(result['rmse_after'], result['rmse_before'])
+        # Anchors should move towards true positions
+        for aid in true_anchors:
+            tx, ty = true_anchors[aid]
+            rx, ry = result['anchors'][aid]['x'], result['anchors'][aid]['y']
+            self.assertAlmostEqual(rx, tx, places=2)
+            self.assertAlmostEqual(ry, ty, places=2)
+
+    def test_returns_none_too_few_points(self):
+        """Fewer than 2 tag positions returns None."""
+        result = refine_anchor_positions(
+            [(1, 1)], [{}], {1: (0, 0), 2: (5, 0)})
+        self.assertIsNone(result)
+
+    def test_returns_none_too_few_observations(self):
+        """Not enough observations relative to anchors returns None."""
+        tags = [(1, 1), (2, 2)]
+        rd = [{1: {'mean': 1.0, 'weight': 1.0}}, {}]
+        result = refine_anchor_positions(tags, rd, {1: (0, 0), 2: (5, 0), 3: (2.5, 4)})
+        self.assertIsNone(result)
 
 
 # ──────────────────────────────────────────────────────────────────────
@@ -290,6 +454,149 @@ class TestCalibrationRoutes(unittest.TestCase):
         r = self.client.post('/calibration/api/start', json={
             'grid': {'x': {'start': 0, 'spacing': 100, 'count': 0}},
         })
+        self.assertEqual(r.status_code, 400)
+
+
+class TestAlignmentRoutes(unittest.TestCase):
+    """Test auto-origin and anchor-refinement API endpoints."""
+
+    def setUp(self):
+        os.environ['UWB_CONFIG'] = ''
+        self.app = create_app(testing=True, db_uri='sqlite://')
+        self.client = self.app.test_client()
+        with self.app.app_context():
+            db.create_all()
+            admin = User(username='admin', is_admin=True)
+            admin.set_password('adminpw')
+            db.session.add(admin)
+            # Add anchors with known positions
+            for i, (hx, x, y) in enumerate(
+                [('A1', 0.0, 0.0), ('A2', 5.0, 0.0), ('A3', 2.5, 4.0)], start=1
+            ):
+                db.session.add(Device(
+                    short_addr_hex=hx, is_anchor=True,
+                    x=x, y=y, z=0.0, is_active=True,
+                ))
+            db.session.commit()
+        self.client.post('/login', data={'username': 'admin', 'password': 'adminpw'})
+        import uwb_web.routes.calibration as cal_mod
+        cal_mod._runner = None
+
+    def tearDown(self):
+        import uwb_web.routes.calibration as cal_mod
+        cal_mod._runner = None
+        with self.app.app_context():
+            db.session.remove()
+            db.engine.dispose()
+
+    def _create_run_with_grid(self):
+        """Create a completed run with a 3×3 grid, UWB data, and ranges."""
+        with self.app.app_context():
+            # Build a 3×3 grid in mm
+            grid = []
+            for iy in range(3):
+                for ix in range(3):
+                    grid.append({'x': ix * 500, 'y': iy * 500, 'z': 0})
+
+            run = CalibrationRun(
+                name='Grid Run', status='completed',
+                origin_x=0, origin_y=0, origin_z=0,
+                dwell_seconds=3, speed_mm_s=10,
+                grid_config_json=json.dumps(grid),
+                results_json=json.dumps({
+                    'corrections': {}, 'stats_before': {}, 'stats_after': {},
+                }),
+            )
+            db.session.add(run)
+            db.session.flush()
+
+            anchors = {1: (0, 0), 2: (5, 0), 3: (2.5, 4)}
+            devices = {d.id: d for d in Device.query.filter_by(is_anchor=True).all()}
+
+            for i, gp in enumerate(grid):
+                # True UWB position: motion mm * 0.001 + offset (1.0, 2.0)
+                ux = gp['x'] * 0.001 + 1.0
+                uy = gp['y'] * 0.001 + 2.0
+                # Build ranges from true anchor positions
+                ranges = {}
+                for d in devices.values():
+                    dist = math.sqrt((ux - d.x)**2 + (uy - d.y)**2)
+                    ranges[d.short_addr_hex] = {
+                        'device_id': d.id, 'mean': dist, 'std': 0.01, 'count': 50,
+                    }
+                db.session.add(CalibrationPoint(
+                    run_id=run.id, point_index=i,
+                    true_x=ux, true_y=uy, true_z=0.0,
+                    uwb_x=ux, uwb_y=uy, uwb_z=0.0,
+                    error_m=0.0,
+                    ranges_json=json.dumps(ranges),
+                ))
+            db.session.commit()
+            return run.id
+
+    def test_auto_origin_missing_run(self):
+        r = self.client.post('/calibration/api/auto-origin', json={'run_id': 999})
+        self.assertEqual(r.status_code, 404)
+
+    def test_auto_origin_no_run_id(self):
+        r = self.client.post('/calibration/api/auto-origin', json={})
+        self.assertEqual(r.status_code, 400)
+
+    def test_auto_origin_success(self):
+        run_id = self._create_run_with_grid()
+        r = self.client.post('/calibration/api/auto-origin', json={'run_id': run_id})
+        data = r.get_json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertIn('rotation_deg', data)
+        self.assertIn('scale', data)
+        self.assertIn('translation_m', data)
+        self.assertIn('rmse_m', data)
+        # Scale should be close to 0.001 (mm → m)
+        self.assertAlmostEqual(data['scale'], 0.001, places=4)
+
+    def test_auto_origin_get_after_post(self):
+        run_id = self._create_run_with_grid()
+        self.client.post('/calibration/api/auto-origin', json={'run_id': run_id})
+        r = self.client.get('/calibration/api/auto-origin')
+        data = r.get_json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertIn('R', data)
+        self.assertIn('scale', data)
+
+    def test_auto_origin_get_no_transform(self):
+        r = self.client.get('/calibration/api/auto-origin')
+        data = r.get_json()
+        self.assertEqual(data['status'], 'none')
+
+    def test_refine_anchors_success(self):
+        run_id = self._create_run_with_grid()
+        r = self.client.post('/calibration/api/refine-anchors', json={'run_id': run_id})
+        data = r.get_json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertIn('anchors', data)
+        self.assertIn('rmse_before', data)
+        self.assertIn('rmse_after', data)
+        self.assertIn('transform', data)
+
+    def test_refine_anchors_missing_run(self):
+        r = self.client.post('/calibration/api/refine-anchors', json={'run_id': 999})
+        self.assertEqual(r.status_code, 404)
+
+    def test_apply_refined_anchors(self):
+        r = self.client.post('/calibration/api/apply-refined-anchors', json={
+            'anchors': {'1': {'x': 0.05, 'y': -0.02}}
+        })
+        data = r.get_json()
+        self.assertEqual(data['status'], 'ok')
+        self.assertEqual(data['updated'], 1)
+        # Verify DB was updated
+        with self.app.app_context():
+            d = Device.query.get(1)
+            self.assertAlmostEqual(d.x, 0.05)
+            self.assertAlmostEqual(d.y, -0.02)
+
+    def test_apply_refined_anchors_empty(self):
+        r = self.client.post('/calibration/api/apply-refined-anchors', json={'anchors': {}})
         self.assertEqual(r.status_code, 400)
 
 

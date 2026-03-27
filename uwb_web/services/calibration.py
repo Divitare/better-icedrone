@@ -118,6 +118,231 @@ def compute_position_stats(points_data):
     }
 
 
+# ──────────────────────────────────────────────────────────────────────
+# Coordinate-frame alignment (auto-origin)
+# ──────────────────────────────────────────────────────────────────────
+
+def estimate_rigid_transform(motion_pts_mm, uwb_pts_m):
+    """
+    Estimate the 2-D rigid transform (rotation + translation) that maps
+    motion-controller coordinates to UWB room coordinates.
+
+    Uses the SVD-based Procrustes method, which is the optimal least-
+    squares fit.  Because the motion controller's *relative* movements
+    are very precise, the residual after alignment tells you how much
+    the UWB positions scatter — not how bad your tape-measure was.
+
+    Args:
+        motion_pts_mm: Nx2 array-like — grid positions in motion-controller
+                       space (mm).  Only the relative layout matters.
+        uwb_pts_m:     Nx2 array-like — corresponding UWB-estimated
+                       positions (metres).
+
+    Returns dict:
+        rotation_deg:  rotation angle (°) from motion frame → UWB frame
+        translation_m: (tx, ty) — UWB position of the motion origin
+        scale:         scale factor (should be ≈ 0.001 since mm → m)
+        rmse_m:        residual RMSE after alignment (metres)
+        R:             2×2 rotation matrix (list of lists)
+        t:             translation vector [tx, ty]
+    """
+    M = np.asarray(motion_pts_mm, dtype=float)
+    U = np.asarray(uwb_pts_m, dtype=float)
+    if M.shape[0] < 3 or M.shape != U.shape:
+        return None
+
+    # Centroids
+    cm = M.mean(axis=0)
+    cu = U.mean(axis=0)
+
+    # Centre the point sets
+    Mc = M - cm
+    Uc = U - cu
+
+    # Solve for R and s using SVD of the cross-covariance matrix
+    H = Mc.T @ Uc                # 2×2
+    Usvd, S, Vt = np.linalg.svd(H)
+
+    # Ensure a proper rotation (det = +1)
+    d = np.linalg.det(Vt.T @ Usvd.T)
+    D = np.diag([1.0, np.sign(d)])
+    R = Vt.T @ D @ Usvd.T
+
+    # Scale: ratio of UWB spread to motion spread
+    scale = float(np.sum(S) / np.sum(Mc ** 2))
+
+    # Translation
+    t = cu - scale * R @ cm
+
+    # Residual
+    aligned = (scale * (R @ M.T)).T + t
+    residuals = np.sqrt(np.sum((aligned - U) ** 2, axis=1))
+    rmse = float(np.sqrt(np.mean(residuals ** 2)))
+
+    angle = float(np.degrees(np.arctan2(R[1, 0], R[0, 0])))
+
+    return {
+        'rotation_deg': round(angle, 3),
+        'translation_m': [round(float(t[0]), 6), round(float(t[1]), 6)],
+        'scale': round(scale, 8),
+        'rmse_m': round(rmse, 6),
+        'R': [[round(float(R[i, j]), 8) for j in range(2)] for i in range(2)],
+        't': [round(float(t[0]), 6), round(float(t[1]), 6)],
+        'per_point_error_m': [round(float(e), 6) for e in residuals],
+    }
+
+
+def apply_rigid_transform(motion_pts_mm, R, t, scale):
+    """
+    Map motion-controller mm points to UWB metres using a rigid transform.
+
+    Args:
+        motion_pts_mm: Nx2 array   (mm, motion-controller frame)
+        R:             2×2 rotation matrix
+        t:             [tx, ty] translation (metres)
+        scale:         scale factor
+
+    Returns:
+        Nx2 array of positions in UWB metres.
+    """
+    M = np.asarray(motion_pts_mm, dtype=float)
+    R = np.asarray(R, dtype=float)
+    t = np.asarray(t, dtype=float)
+    return (scale * (R @ M.T)).T + t
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Anchor position refinement
+# ──────────────────────────────────────────────────────────────────────
+
+def refine_anchor_positions(tag_positions_m, range_data, initial_anchors,
+                            max_iterations=50, tol=1e-6):
+    """
+    Optimise anchor positions using precise tag positions and measured
+    ranges via Gauss-Newton.
+
+    The motion controller gives very precise *relative* tag positions.
+    After applying the rigid transform they become precise *absolute*
+    positions.  We can then ask: "given these tag positions, what anchor
+    positions best explain all the range measurements?"
+
+    This is a standard nonlinear least-squares problem:
+        min_a  Σᵢ Σⱼ wⱼ (rᵢⱼ - ||tagᵢ - anchorⱼ||)²
+
+    where rᵢⱼ is the measured range from tag position i to anchor j.
+
+    Args:
+        tag_positions_m: list of (x, y) — precise tag positions (metres)
+        range_data:      list of dicts, one per tag position.
+                         Each: {device_id: {'mean': float, 'weight': float}}
+        initial_anchors: {device_id: (x, y)} — current anchor positions
+        max_iterations:  Gauss-Newton iteration cap
+        tol:             convergence threshold (change in parameter norm)
+
+    Returns dict:
+        anchors:  {device_id: {'x': float, 'y': float,
+                               'dx': delta_x, 'dy': delta_y}}
+        rmse_before: float
+        rmse_after: float
+        iterations: int
+    """
+    anchor_ids = sorted(initial_anchors.keys())
+    if len(anchor_ids) < 1 or len(tag_positions_m) < 2:
+        return None
+
+    # Parameter vector: [ax0, ay0, ax1, ay1, ...]
+    params = np.array(
+        [c for aid in anchor_ids for c in initial_anchors[aid]], dtype=float
+    )
+    n_anchors = len(anchor_ids)
+    aid_to_idx = {aid: i for i, aid in enumerate(anchor_ids)}
+
+    # Build observation list: (tag_idx, anchor_param_idx, measured_range, weight)
+    observations = []
+    for ti, (rd) in enumerate(range_data):
+        for did, info in rd.items():
+            did = int(did)
+            if did not in aid_to_idx:
+                continue
+            r = info.get('mean')
+            w = info.get('weight', 1.0)
+            if r is not None and r > 0:
+                observations.append((ti, aid_to_idx[did], r, w))
+
+    if len(observations) < 2 * n_anchors:
+        return None          # not enough data to constrain all anchors
+
+    tags = np.array(tag_positions_m, dtype=float)   # N×2
+    params_init = params.copy()
+
+    def _compute_residuals(p):
+        res = np.empty(len(observations))
+        for k, (ti, ai, meas, _) in enumerate(observations):
+            ax, ay = p[2*ai], p[2*ai+1]
+            dx, dy = tags[ti, 0] - ax, tags[ti, 1] - ay
+            pred = math.sqrt(dx*dx + dy*dy)
+            res[k] = meas - pred
+        return res
+
+    def _rmse(p):
+        r = _compute_residuals(p)
+        return float(np.sqrt(np.mean(r**2)))
+
+    rmse_before = _rmse(params)
+
+    # Gauss-Newton iterations
+    iterations = 0
+    for it in range(max_iterations):
+        iterations = it + 1
+        res = np.empty(len(observations))
+        J = np.zeros((len(observations), 2 * n_anchors))
+
+        for k, (ti, ai, meas, w) in enumerate(observations):
+            ax, ay = params[2*ai], params[2*ai+1]
+            dx, dy = tags[ti, 0] - ax, tags[ti, 1] - ay
+            dist = math.sqrt(dx*dx + dy*dy)
+            if dist < 1e-9:
+                dist = 1e-9
+            res[k] = w * (meas - dist)
+            # Jacobian of -dist w.r.t. anchor params [ax, ay]
+            J[k, 2*ai]   = w * (dx / dist)     # ∂(-dist)/∂ax = dx/dist
+            J[k, 2*ai+1] = w * (dy / dist)
+
+        # Normal equations: (J^T J) Δp = J^T r
+        JtJ = J.T @ J
+        # Damping for robustness (Levenberg)
+        JtJ += 1e-6 * np.eye(JtJ.shape[0])
+        Jtr = J.T @ res
+
+        try:
+            dp = np.linalg.solve(JtJ, Jtr)
+        except np.linalg.LinAlgError:
+            break
+
+        params -= dp
+
+        if np.linalg.norm(dp) < tol:
+            break
+
+    rmse_after = _rmse(params)
+
+    result_anchors = {}
+    for i, aid in enumerate(anchor_ids):
+        ox, oy = initial_anchors[aid]
+        nx, ny = float(params[2*i]), float(params[2*i+1])
+        result_anchors[aid] = {
+            'x': round(nx, 4), 'y': round(ny, 4),
+            'dx': round(nx - ox, 4), 'dy': round(ny - oy, 4),
+        }
+
+    return {
+        'anchors': result_anchors,
+        'rmse_before': round(rmse_before, 6),
+        'rmse_after': round(rmse_after, 6),
+        'iterations': iterations,
+    }
+
+
 def apply_range_correction(measured, bias, scale):
     """Apply an affine correction to a single range measurement."""
     if abs(scale) < 0.01:
