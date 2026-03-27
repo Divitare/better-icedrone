@@ -168,6 +168,12 @@ def api_apply():
     set_config('cal_corrections_enabled', 'true')
     invalidate_corrections_cache()
 
+    # Reload engine weights so live corrections take effect immediately
+    from uwb_web import get_serial_worker
+    worker = get_serial_worker()
+    if worker:
+        worker.reload_engine()
+
     logger.info('Applied corrections from run %d (%d anchors)', run_id, len(corrections))
     return jsonify({'status': 'ok', 'msg': f'Corrections applied from run {run_id}.'})
 
@@ -183,6 +189,11 @@ def api_toggle():
     set_config('cal_corrections_enabled', 'true' if enabled else 'false')
     invalidate_corrections_cache()
 
+    from uwb_web import get_serial_worker
+    worker = get_serial_worker()
+    if worker:
+        worker.reload_engine()
+
     return jsonify({'status': 'ok', 'enabled': enabled})
 
 
@@ -194,6 +205,116 @@ def api_corrections():
     enabled = get_config('cal_corrections_enabled', 'false') == 'true'
     corrections = json.loads(raw) if raw else {}
     return jsonify({'enabled': enabled, 'corrections': corrections})
+
+
+# ------------------------------------------------------------------
+# Engine settings (EKF / NLOS / smoother)
+# ------------------------------------------------------------------
+
+_ENGINE_DEFAULTS = {
+    'ekf_enabled': True,
+    'nlos_enabled': True,
+    'nlos_threshold': 0.5,
+    'process_noise': 0.1,
+    'range_var': 0.1,
+}
+
+
+@bp.route('/api/engine', methods=['GET'])
+def api_engine_get():
+    """Return current engine settings."""
+    from uwb_web.services.config_service import get_config
+    raw = get_config('engine_settings')
+    cfg = json.loads(raw) if raw else dict(_ENGINE_DEFAULTS)
+    return jsonify(cfg)
+
+
+@bp.route('/api/engine', methods=['POST'])
+def api_engine_set():
+    """Save engine settings and reload the live engine."""
+    data = request.get_json(silent=True) or {}
+    cfg = {
+        'ekf_enabled': bool(data.get('ekf_enabled', True)),
+        'nlos_enabled': bool(data.get('nlos_enabled', True)),
+        'nlos_threshold': float(data.get('nlos_threshold', 0.5)),
+        'process_noise': float(data.get('process_noise', 0.1)),
+        'range_var': float(data.get('range_var', 0.1)),
+    }
+    from uwb_web.services.config_service import set_config
+    set_config('engine_settings', json.dumps(cfg))
+
+    from uwb_web import get_serial_worker
+    worker = get_serial_worker()
+    if worker:
+        worker.reload_engine()
+
+    return jsonify({'status': 'ok', **cfg})
+
+
+@bp.route('/api/engine/reset', methods=['POST'])
+def api_engine_reset():
+    """Reset the EKF state (e.g. after moving the tag by hand)."""
+    from uwb_web import get_serial_worker
+    worker = get_serial_worker()
+    if worker:
+        worker.get_engine().reset()
+    return jsonify({'status': 'ok', 'msg': 'EKF state reset.'})
+
+
+# ------------------------------------------------------------------
+# Trajectory smoother ("deblur")
+# ------------------------------------------------------------------
+
+@bp.route('/api/smooth', methods=['POST'])
+def api_smooth():
+    """
+    Apply the RTS trajectory smoother to a set of positions.
+
+    Body: { "positions": [...], "process_noise": 0.1, "measurement_noise": 0.01, "dt": 0.1 }
+      or: { "source": "history" }   — smooth the live position history buffer
+      or: { "source": "run", "run_id": 123 }  — smooth a calibration run's points
+    """
+    from uwb_web.services.position_engine import smooth_trajectory
+
+    data = request.get_json(silent=True) or {}
+    pn = float(data.get('process_noise', 0.1))
+    mn = float(data.get('measurement_noise', 0.01))
+    dt = float(data.get('dt', 0.1))
+
+    source = data.get('source', 'positions')
+
+    if source == 'history':
+        from uwb_web import get_serial_worker
+        worker = get_serial_worker()
+        if not worker:
+            return jsonify({'status': 'error', 'msg': 'No serial worker.'}), 503
+        pos_data = worker.get_position()
+        positions = pos_data.get('history', [])
+    elif source == 'run':
+        run_id = data.get('run_id')
+        if not run_id:
+            return jsonify({'status': 'error', 'msg': 'run_id required.'}), 400
+        from uwb_web.models import CalibrationRun
+        from uwb_web.db import db
+        run = db.session.get(CalibrationRun, run_id)
+        if not run:
+            return jsonify({'status': 'error', 'msg': 'Run not found.'}), 404
+        positions = []
+        for p in run.points.order_by('point_index').all():
+            if p.uwb_x is not None:
+                positions.append({
+                    'x': p.uwb_x, 'y': p.uwb_y,
+                    'true_x': p.true_x, 'true_y': p.true_y,
+                })
+    else:
+        positions = data.get('positions', [])
+
+    if len(positions) < 3:
+        return jsonify({'status': 'error', 'msg': 'Need at least 3 positions.'}), 400
+
+    smoothed = smooth_trajectory(positions, dt=dt,
+                                 process_noise=pn, measurement_noise=mn)
+    return jsonify({'status': 'ok', 'positions': smoothed, 'n': len(smoothed)})
 
 
 # ------------------------------------------------------------------

@@ -22,6 +22,7 @@ from collections import deque
 from uwb_web.parser import parse_line
 from uwb_web.services.filtering import DeviceFilterBank
 from uwb_web.services.trilateration import estimate_position_2d, estimate_position_3d
+from uwb_web.services.position_engine import PositionEngine
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,10 @@ class SerialWorker:
         self._position_lock = threading.Lock()
         self.last_position = None     # (x, y) or (x, y, z) or None
         self.position_history = deque(maxlen=200)  # list of {x, y, z?, ts}
+
+        # Advanced position engine (EKF + WLS + NLOS rejection)
+        self._engine = PositionEngine()
+        self._engine_loaded = False
 
     # ---- lifecycle ----
 
@@ -414,6 +419,39 @@ class SerialWorker:
 
     # ---- position estimation ----
 
+    def _load_engine_settings(self):
+        """One-time load of engine settings and calibration weights."""
+        if self._engine_loaded:
+            return
+        try:
+            from uwb_web.services.config_service import get_config
+            from uwb_web.services.calibration import get_active_corrections
+            from uwb_web.services.position_engine import build_anchor_weights
+            import json
+
+            corrections = get_active_corrections(self.app)
+            if corrections:
+                self._engine.set_anchor_weights(build_anchor_weights(corrections))
+
+            # Load tuneable settings from DB (if stored)
+            raw = get_config('engine_settings')
+            if raw:
+                cfg = json.loads(raw)
+                self._engine.load_settings(cfg)
+
+            self._engine_loaded = True
+        except Exception as e:
+            logger.debug('Engine settings load: %s', e)
+
+    def reload_engine(self):
+        """Called when calibration / engine settings change."""
+        self._engine_loaded = False
+        self._engine.reset()
+
+    def get_engine(self):
+        """Public accessor for the position engine."""
+        return self._engine
+
     def _update_position(self, device_id, range_m, now_utc):
         """Run filtered trilateration after each measurement."""
         filtered = self._filter_bank.filter_range(device_id, range_m)
@@ -426,6 +464,8 @@ class SerialWorker:
             with self.app.app_context():
                 from uwb_web.models import Device
                 from uwb_web.services.calibration import get_active_corrections, correct_ranges
+
+                self._load_engine_settings()
 
                 anchors_2d = {}
                 anchors_3d = {}
@@ -441,6 +481,29 @@ class SerialWorker:
                     get_active_corrections(self.app),
                 )
 
+                # Try advanced engine first (EKF + WLS + NLOS)
+                result = self._engine.update(ranges_for_pos, anchors_2d)
+                if result is not None:
+                    entry = {
+                        'x': result['x'], 'y': result['y'],
+                        'ts': now_utc.isoformat(),
+                        'vx': result.get('vx', 0),
+                        'vy': result.get('vy', 0),
+                        'confidence': result.get('confidence', 0),
+                        'method': result.get('method', 'ekf'),
+                    }
+                    if result.get('covariance'):
+                        entry['covariance'] = result['covariance']
+                    if result.get('rejected_anchors'):
+                        entry['rejected'] = result['rejected_anchors']
+                    with self._position_lock:
+                        self.last_position = entry
+                        self.position_history.append(entry)
+                    if self.sse_broadcaster:
+                        self.sse_broadcaster.publish({'type': 'position', **entry})
+                    return
+
+                # Fallback to basic trilateration
                 pos = None
                 if len(anchors_3d) >= 4:
                     pos = estimate_position_3d(ranges_for_pos, anchors_3d)

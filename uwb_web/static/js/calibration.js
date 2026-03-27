@@ -242,5 +242,99 @@
     // ---- Init ----
     loadRuns();
     loadActiveCorrections();
+    loadEngine();
+
+    // ---- Engine settings ----
+
+    function loadEngine() {
+        api('/calibration/api/engine').then(function (cfg) {
+            document.getElementById('eng-ekf').checked = cfg.ekf_enabled !== false;
+            document.getElementById('eng-nlos').checked = cfg.nlos_enabled !== false;
+            document.getElementById('eng-nlos-thr').value = cfg.nlos_threshold || 0.5;
+            document.getElementById('eng-pn').value = cfg.process_noise || 0.1;
+            document.getElementById('eng-rv').value = cfg.range_var || 0.1;
+        });
+    }
+
+    window.saveEngine = function () {
+        var body = {
+            ekf_enabled: document.getElementById('eng-ekf').checked,
+            nlos_enabled: document.getElementById('eng-nlos').checked,
+            nlos_threshold: val('eng-nlos-thr'),
+            process_noise: val('eng-pn'),
+            range_var: val('eng-rv'),
+        };
+        var msg = document.getElementById('eng-msg');
+        api('/calibration/api/engine', 'POST', body).then(function (r) {
+            msg.textContent = r.status === 'ok' ? 'Saved' : (r.msg || 'Error');
+            msg.style.color = r.status === 'ok' ? 'var(--green)' : 'var(--red)';
+            setTimeout(function () { msg.textContent = ''; }, 2000);
+        });
+    };
+
+    window.resetEKF = function () {
+        api('/calibration/api/engine/reset', 'POST').then(function (r) {
+            var msg = document.getElementById('eng-msg');
+            msg.textContent = 'EKF reset';
+            msg.style.color = 'var(--green)';
+            setTimeout(function () { msg.textContent = ''; }, 2000);
+        });
+    };
+
+    // ---- Trajectory smoother ("deblur") ----
+
+    window.calSmooth = function () {
+        if (!currentRunId) return;
+        var msg = document.getElementById('apply-msg');
+        msg.textContent = 'Smoothing…';
+        msg.style.color = 'var(--text-muted)';
+
+        api('/calibration/api/smooth', 'POST', {
+            source: 'run', run_id: currentRunId,
+            process_noise: val('eng-pn'),
+            measurement_noise: 0.01,
+            dt: 0.1,
+        }).then(function (r) {
+            if (r.status !== 'ok') {
+                msg.textContent = r.msg || 'Error';
+                msg.style.color = 'var(--red)';
+                return;
+            }
+            msg.textContent = 'Smoothed ' + r.n + ' points ✓';
+            msg.style.color = 'var(--green)';
+            showSmoothed(r.positions);
+        }).catch(function () {
+            msg.textContent = 'Failed';
+            msg.style.color = 'var(--red)';
+        });
+    };
+
+    function showSmoothed(positions) {
+        var panel = document.getElementById('smooth-panel');
+        panel.style.display = '';
+
+        // Stats
+        var statsEl = document.getElementById('smooth-stats');
+        var avgConf = 0;
+        positions.forEach(function (p) { avgConf += (p.confidence || 0); });
+        avgConf = positions.length ? (avgConf / positions.length) : 0;
+        statsEl.innerHTML =
+            '<div class="stat-box"><div class="stat-val">' + positions.length + '</div><div class="stat-label">Points</div></div>' +
+            '<div class="stat-box"><div class="stat-val">' + avgConf.toFixed(2) + '</div><div class="stat-label">Avg Confidence</div></div>';
+
+        // Table
+        var tbody = document.querySelector('#smooth-table tbody');
+        tbody.innerHTML = '';
+        positions.forEach(function (p, i) {
+            var tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + i + '</td>'
+                + '<td>' + p.x.toFixed(3) + '</td>'
+                + '<td>' + p.y.toFixed(3) + '</td>'
+                + '<td>' + (p.vx != null ? p.vx.toFixed(3) : '—') + '</td>'
+                + '<td>' + (p.vy != null ? p.vy.toFixed(3) : '—') + '</td>'
+                + '<td>' + (p.confidence != null ? p.confidence.toFixed(2) : '—') + '</td>';
+            tbody.appendChild(tr);
+        });
+    }
 
 })();
