@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+{% block title %}Calibration — UWB Web{% endblock %}
+
+{% block head %}
+<style>
+    .cal-layout { display: flex; gap: 20px; flex-wrap: wrap; }
+    .cal-main { flex: 1 1 560px; display: flex; flex-direction: column; gap: 12px; }
+    .cal-sidebar { flex: 0 0 340px; display: flex; flex-direction: column; gap: 12px; }
+    .panel { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; }
+    .panel h3 { margin: 0 0 10px; font-size: 14px; }
+
+    /* param rows */
+    .param-row { display: flex; gap: 10px; margin: 8px 0; flex-wrap: wrap; align-items: end; }
+    .param-group { display: flex; flex-direction: column; gap: 2px; }
+    .param-group label { font-size: 11px; font-weight: 600; color: var(--text-muted); }
+    .param-group input { width: 90px; padding: 4px 8px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; font-family: var(--mono); }
+
+    /* grid table */
+    .grid-table { width: 100%; font-size: 13px; }
+    .grid-table th { text-align: left; padding: 4px 6px; font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
+    .grid-table td { padding: 4px 6px; }
+    .grid-table input { width: 100%; padding: 4px 6px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; font-family: var(--mono); }
+
+    /* progress bar */
+    .progress-bar { width: 100%; height: 20px; background: var(--bg); border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+    .progress-fill { height: 100%; background: var(--primary); transition: width .3s ease; }
+    .progress-text { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+
+    /* status dot */
+    .status-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+    .status-dot.idle { background: var(--gray); }
+    .status-dot.running { background: var(--orange); }
+    .status-dot.completed { background: var(--green); }
+    .status-dot.failed { background: var(--red); }
+    .status-dot.cancelled { background: var(--gray); }
+
+    /* stats */
+    .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .stat-box { background: var(--bg); border-radius: var(--radius); padding: 10px; text-align: center; }
+    .stat-val { font-size: 22px; font-weight: 700; font-family: var(--mono); }
+    .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; }
+
+    /* corrections table */
+    .corr-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+    .corr-table th { text-align: left; padding: 4px 6px; font-size: 11px; color: var(--text-muted); text-transform: uppercase; border-bottom: 2px solid var(--border); }
+    .corr-table td { padding: 4px 6px; font-family: var(--mono); border-bottom: 1px solid #eee; }
+
+    /* runs table */
+    .runs-table { width: 100%; font-size: 12px; border-collapse: collapse; }
+    .runs-table th { text-align: left; padding: 4px 6px; font-size: 11px; color: var(--text-muted); text-transform: uppercase; border-bottom: 2px solid var(--border); }
+    .runs-table td { padding: 4px 6px; border-bottom: 1px solid #eee; }
+    .runs-table tr { cursor: pointer; }
+    .runs-table tr:hover { background: #f8f9fb; }
+
+    /* toggle switch */
+    .toggle-row { display: flex; align-items: center; gap: 10px; }
+    .toggle { position: relative; width: 36px; height: 20px; }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; inset: 0; background: var(--gray); border-radius: 20px; cursor: pointer; transition: .2s; }
+    .slider::before { content: ''; position: absolute; width: 14px; height: 14px; left: 3px; top: 3px; background: #fff; border-radius: 50%; transition: .2s; }
+    .toggle input:checked + .slider { background: var(--green); }
+    .toggle input:checked + .slider::before { transform: translateX(16px); }
+
+    /* points table */
+    .points-wrap { max-height: 300px; overflow-y: auto; }
+    .points-table { width: 100%; font-size: 11px; border-collapse: collapse; }
+    .points-table th { text-align: left; padding: 3px 4px; font-size: 10px; color: var(--text-muted); text-transform: uppercase; border-bottom: 2px solid var(--border); position: sticky; top: 0; background: var(--card); }
+    .points-table td { padding: 3px 4px; font-family: var(--mono); border-bottom: 1px solid #eee; }
+
+    .btn-stop { background: var(--red); color: #fff; font-weight: 700; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Calibration</h1>
+
+<div class="cal-layout">
+    <div class="cal-main">
+
+        <!-- Origin offset -->
+        <div class="panel">
+            <h3>UWB Origin Offset</h3>
+            <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
+                Where the motion controller's (0, 0, 0) sits in UWB room coordinates (metres).
+            </p>
+            <div class="param-row">
+                <div class="param-group">
+                    <label>Origin X (m)</label>
+                    <input type="number" id="origin-x" value="0" step="0.01">
+                </div>
+                <div class="param-group">
+                    <label>Origin Y (m)</label>
+                    <input type="number" id="origin-y" value="0" step="0.01">
+                </div>
+                <div class="param-group">
+                    <label>Origin Z (m)</label>
+                    <input type="number" id="origin-z" value="0" step="0.01">
+                </div>
+            </div>
+        </div>
+
+        <!-- Grid config -->
+        <div class="panel">
+            <h3>Grid Configuration</h3>
+            <table class="grid-table">
+                <thead>
+                    <tr><th>Axis</th><th>Start (mm)</th><th>Spacing (mm)</th><th># Points</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td>X</td>
+                        <td><input type="number" id="gx-start" value="0" step="1"></td>
+                        <td><input type="number" id="gx-space" value="100" step="1"></td>
+                        <td><input type="number" id="gx-n" value="3" min="1" step="1"></td>
+                    </tr>
+                    <tr>
+                        <td>Y</td>
+                        <td><input type="number" id="gy-start" value="0" step="1"></td>
+                        <td><input type="number" id="gy-space" value="100" step="1"></td>
+                        <td><input type="number" id="gy-n" value="3" min="1" step="1"></td>
+                    </tr>
+                    <tr>
+                        <td>Z</td>
+                        <td><input type="number" id="gz-start" value="0" step="1"></td>
+                        <td><input type="number" id="gz-space" value="0" step="1"></td>
+                        <td><input type="number" id="gz-n" value="1" min="1" step="1"></td>
+                    </tr>
+                </tbody>
+            </table>
+            <div class="param-row">
+                <div class="param-group">
+                    <label>Dwell (s)</label>
+                    <input type="number" id="cal-dwell" value="3" min="0.5" step="0.5">
+                </div>
+                <div class="param-group">
+                    <label>Speed (mm/s)</label>
+                    <input type="number" id="cal-speed" value="10" min="0.1" step="1">
+                </div>
+                <div class="param-group">
+                    <label>Run Name</label>
+                    <input type="text" id="cal-name" value="" placeholder="optional" style="width: 140px;">
+                </div>
+            </div>
+            <div style="margin-top: 8px; display: flex; gap: 8px;">
+                <button class="btn" id="btn-start" onclick="calStart()">Start Calibration</button>
+                <button class="btn btn-stop" id="btn-cancel" onclick="calCancel()" style="display: none;">Cancel</button>
+                <span id="cal-total" style="font-size: 12px; color: var(--text-muted); align-self: center;"></span>
+            </div>
+        </div>
+
+        <!-- Progress -->
+        <div class="panel" id="progress-panel" style="display: none;">
+            <h3>Progress</h3>
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                <span class="status-dot" id="run-dot"></span>
+                <span id="run-status">—</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" id="progress-fill" style="width: 0%;"></div></div>
+            <div class="progress-text" id="progress-text">—</div>
+        </div>
+
+        <!-- Results -->
+        <div class="panel" id="results-panel" style="display: none;">
+            <h3>Results</h3>
+            <div style="display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 12px;">
+                <div>
+                    <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">Before Corrections</div>
+                    <div class="stats-grid" id="stats-before"></div>
+                </div>
+                <div>
+                    <div style="font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px;">After Corrections</div>
+                    <div class="stats-grid" id="stats-after"></div>
+                </div>
+            </div>
+
+            <h3>Per-Anchor Corrections</h3>
+            <table class="corr-table" id="corr-table">
+                <thead><tr><th>Anchor</th><th>Bias (m)</th><th>Scale</th><th>Mean Err</th><th>Std</th><th>N</th></tr></thead>
+                <tbody></tbody>
+            </table>
+
+            <div style="margin-top: 12px;">
+                <button class="btn" id="btn-apply" onclick="calApply()">Apply Corrections</button>
+                <span id="apply-msg" style="font-size: 12px; margin-left: 8px;"></span>
+            </div>
+        </div>
+
+        <!-- Individual points -->
+        <div class="panel" id="points-panel" style="display: none;">
+            <h3>Calibration Points</h3>
+            <div class="points-wrap">
+                <table class="points-table" id="points-table">
+                    <thead><tr>
+                        <th>#</th><th>True X</th><th>True Y</th><th>True Z</th>
+                        <th>UWB X</th><th>UWB Y</th><th>UWB Z</th><th>Error (m)</th>
+                    </tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Sidebar -->
+    <div class="cal-sidebar">
+
+        <!-- Active corrections toggle -->
+        <div class="panel">
+            <h3>Live Corrections</h3>
+            <div class="toggle-row">
+                <label class="toggle">
+                    <input type="checkbox" id="corr-toggle" {% if corrections_enabled %}checked{% endif %} onchange="calToggle(this.checked)">
+                    <span class="slider"></span>
+                </label>
+                <span id="corr-label">{{ 'Enabled' if corrections_enabled else 'Disabled' }}</span>
+            </div>
+            <div id="active-corr" style="margin-top: 10px;"></div>
+        </div>
+
+        <!-- Run history -->
+        <div class="panel">
+            <h3>Run History</h3>
+            <table class="runs-table" id="runs-table">
+                <thead><tr><th>ID</th><th>Name</th><th>Status</th><th>Points</th></tr></thead>
+                <tbody></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/calibration.js') }}"></script>
+{% endblock %}

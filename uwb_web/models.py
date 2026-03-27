@@ -164,3 +164,55 @@ class User(UserMixin, db.Model):
 
     def check_password(self, password):
         return check_password_hash(self.password_hash, password)
+
+
+class CalibrationRun(db.Model):
+    """A calibration run that moves the tag to known positions and collects data."""
+    __tablename__ = 'calibration_runs'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    status = db.Column(db.String(20), nullable=False, default='running')  # running, completed, failed, cancelled
+    created_at_utc = db.Column(db.DateTime, nullable=False, default=_utcnow)
+    finished_at_utc = db.Column(db.DateTime, nullable=True)
+
+    # Coordinate mapping: true_uwb = motion_mm / 1000 + origin
+    origin_x = db.Column(db.Float, nullable=False, default=0.0)
+    origin_y = db.Column(db.Float, nullable=False, default=0.0)
+    origin_z = db.Column(db.Float, nullable=False, default=0.0)
+
+    dwell_seconds = db.Column(db.Float, nullable=False, default=3.0)
+    speed_mm_s = db.Column(db.Float, nullable=False, default=10.0)
+
+    # JSON blobs for config and results
+    grid_config_json = db.Column(db.Text, nullable=True)
+    results_json = db.Column(db.Text, nullable=True)
+
+    points = db.relationship('CalibrationPoint', backref='run',
+                             cascade='all, delete-orphan', lazy='dynamic',
+                             order_by='CalibrationPoint.point_index')
+
+
+class CalibrationPoint(db.Model):
+    """One measured point in a calibration run."""
+    __tablename__ = 'calibration_points'
+
+    id = db.Column(db.Integer, primary_key=True)
+    run_id = db.Column(db.Integer, db.ForeignKey('calibration_runs.id'), nullable=False, index=True)
+    point_index = db.Column(db.Integer, nullable=False)
+
+    # True position in UWB coordinates (metres)
+    true_x = db.Column(db.Float, nullable=False)
+    true_y = db.Column(db.Float, nullable=False)
+    true_z = db.Column(db.Float, nullable=False, default=0.0)
+
+    # Mean UWB estimated position during dwell
+    uwb_x = db.Column(db.Float, nullable=True)
+    uwb_y = db.Column(db.Float, nullable=True)
+    uwb_z = db.Column(db.Float, nullable=True)
+
+    # Per-anchor collected ranges: {anchor_hex: {mean, std, count, device_id}}
+    ranges_json = db.Column(db.Text, nullable=True)
+
+    error_m = db.Column(db.Float, nullable=True)   # Euclidean distance to true position
+    collected_at_utc = db.Column(db.DateTime, nullable=True)

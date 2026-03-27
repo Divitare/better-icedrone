@@ -425,6 +425,8 @@ class SerialWorker:
         try:
             with self.app.app_context():
                 from uwb_web.models import Device
+                from uwb_web.services.calibration import get_active_corrections, correct_ranges
+
                 anchors_2d = {}
                 anchors_3d = {}
                 for d in Device.query.filter_by(is_anchor=True).all():
@@ -433,11 +435,17 @@ class SerialWorker:
                         if d.z is not None:
                             anchors_3d[d.id] = (d.x, d.y, d.z)
 
+                # Apply calibration corrections if enabled
+                ranges_for_pos = correct_ranges(
+                    self._filtered_ranges,
+                    get_active_corrections(self.app),
+                )
+
                 pos = None
                 if len(anchors_3d) >= 4:
-                    pos = estimate_position_3d(self._filtered_ranges, anchors_3d)
+                    pos = estimate_position_3d(ranges_for_pos, anchors_3d)
                 if pos is None and len(anchors_2d) >= 3:
-                    pos = estimate_position_2d(self._filtered_ranges, anchors_2d)
+                    pos = estimate_position_2d(ranges_for_pos, anchors_2d)
 
                 if pos is not None:
                     entry = {'x': pos[0], 'y': pos[1], 'ts': now_utc.isoformat()}

@@ -1,0 +1,246 @@
+/**
+ * Calibration page — talks to /calibration/api/* endpoints.
+ */
+(function () {
+    'use strict';
+
+    var pollTimer = null;
+    var currentRunId = null;
+
+    function val(id) { return parseFloat(document.getElementById(id).value) || 0; }
+    function setText(id, v) { document.getElementById(id).textContent = v; }
+
+    function api(url, method, body) {
+        var opts = { method: method || 'GET', headers: { 'Content-Type': 'application/json' } };
+        if (body) opts.body = JSON.stringify(body);
+        return fetch(url, opts).then(function (r) { return r.json(); });
+    }
+
+    // ---- Grid point counter ----
+
+    function updateTotal() {
+        var nx = Math.max(1, parseInt(document.getElementById('gx-n').value) || 1);
+        var ny = Math.max(1, parseInt(document.getElementById('gy-n').value) || 1);
+        var nz = Math.max(1, parseInt(document.getElementById('gz-n').value) || 1);
+        setText('cal-total', nx * ny * nz + ' points');
+    }
+
+    ['gx-n', 'gy-n', 'gz-n'].forEach(function (id) {
+        document.getElementById(id).addEventListener('input', updateTotal);
+    });
+    updateTotal();
+
+    // ---- Start / Cancel ----
+
+    window.calStart = function () {
+        var body = {
+            origin_x: val('origin-x'),
+            origin_y: val('origin-y'),
+            origin_z: val('origin-z'),
+            dwell: val('cal-dwell'),
+            speed: val('cal-speed'),
+            name: document.getElementById('cal-name').value.trim(),
+            grid: {
+                x: { start: val('gx-start'), spacing: val('gx-space'), count: parseInt(document.getElementById('gx-n').value) || 1 },
+                y: { start: val('gy-start'), spacing: val('gy-space'), count: parseInt(document.getElementById('gy-n').value) || 1 },
+                z: { start: val('gz-start'), spacing: val('gz-space'), count: parseInt(document.getElementById('gz-n').value) || 1 },
+            }
+        };
+
+        api('/calibration/api/start', 'POST', body).then(function (r) {
+            if (r.status === 'ok') {
+                currentRunId = r.run_id;
+                startPolling();
+            } else {
+                alert(r.msg || 'Failed to start.');
+            }
+        }).catch(function (e) { alert('Error: ' + e); });
+    };
+
+    window.calCancel = function () {
+        api('/calibration/api/cancel', 'POST').then(function (r) {
+            if (r.status !== 'ok') alert(r.msg || 'Cancel failed.');
+        });
+    };
+
+    // ---- Status polling ----
+
+    function startPolling() {
+        document.getElementById('progress-panel').style.display = '';
+        document.getElementById('btn-start').style.display = 'none';
+        document.getElementById('btn-cancel').style.display = '';
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = setInterval(pollStatus, 500);
+        pollStatus();
+    }
+
+    function stopPolling() {
+        if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+        document.getElementById('btn-start').style.display = '';
+        document.getElementById('btn-cancel').style.display = 'none';
+    }
+
+    function pollStatus() {
+        api('/calibration/api/status').then(function (r) {
+            var dot = document.getElementById('run-dot');
+            dot.className = 'status-dot ' + (r.status || 'idle');
+            setText('run-status', r.status || 'idle');
+
+            var p = r.progress || {};
+            var pct = p.total ? Math.round((p.current / p.total) * 100) : 0;
+            document.getElementById('progress-fill').style.width = pct + '%';
+            setText('progress-text', (p.current || 0) + ' / ' + (p.total || 0) + '  —  ' + (p.phase || ''));
+
+            if (r.status !== 'running') {
+                stopPolling();
+                if (r.run_id) {
+                    currentRunId = r.run_id;
+                    loadRunDetail(r.run_id);
+                }
+                loadRuns();
+            }
+        });
+    }
+
+    // ---- Run detail ----
+
+    function loadRunDetail(id) {
+        api('/calibration/api/runs/' + id).then(function (r) {
+            currentRunId = r.id;
+            showResults(r);
+            showPoints(r.points);
+        });
+    }
+
+    function showResults(run) {
+        var panel = document.getElementById('results-panel');
+        if (!run.results) { panel.style.display = 'none'; return; }
+        panel.style.display = '';
+
+        var res = run.results;
+        renderStats('stats-before', res.stats_before);
+        renderStats('stats-after', res.stats_after);
+
+        // Corrections table
+        var tbody = document.querySelector('#corr-table tbody');
+        tbody.innerHTML = '';
+        var corr = res.corrections || {};
+        Object.keys(corr).forEach(function (did) {
+            var c = corr[did];
+            var tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + (c.hex || did) + '</td>'
+                + '<td>' + c.bias.toFixed(4) + '</td>'
+                + '<td>' + c.scale.toFixed(4) + '</td>'
+                + '<td>' + c.mean_error.toFixed(4) + '</td>'
+                + '<td>' + c.std_error.toFixed(4) + '</td>'
+                + '<td>' + c.n_samples + '</td>';
+            tbody.appendChild(tr);
+        });
+    }
+
+    function renderStats(containerId, stats) {
+        var el = document.getElementById(containerId);
+        if (!stats || stats.n_points === 0) {
+            el.innerHTML = '<div class="stat-box"><div class="stat-val">—</div><div class="stat-label">No data</div></div>';
+            return;
+        }
+        el.innerHTML = ''
+            + '<div class="stat-box"><div class="stat-val">' + (stats.rmse != null ? stats.rmse.toFixed(4) : '—') + '</div><div class="stat-label">RMSE (m)</div></div>'
+            + '<div class="stat-box"><div class="stat-val">' + (stats.mean_error != null ? stats.mean_error.toFixed(4) : '—') + '</div><div class="stat-label">Mean (m)</div></div>'
+            + '<div class="stat-box"><div class="stat-val">' + (stats.max_error != null ? stats.max_error.toFixed(4) : '—') + '</div><div class="stat-label">Max (m)</div></div>'
+            + '<div class="stat-box"><div class="stat-val">' + stats.n_points + '</div><div class="stat-label">Points</div></div>';
+    }
+
+    function showPoints(points) {
+        var panel = document.getElementById('points-panel');
+        if (!points || points.length === 0) { panel.style.display = 'none'; return; }
+        panel.style.display = '';
+        var tbody = document.querySelector('#points-table tbody');
+        tbody.innerHTML = '';
+        points.forEach(function (p) {
+            var tr = document.createElement('tr');
+            tr.innerHTML = '<td>' + p.index + '</td>'
+                + '<td>' + p.true_x.toFixed(3) + '</td>'
+                + '<td>' + p.true_y.toFixed(3) + '</td>'
+                + '<td>' + p.true_z.toFixed(3) + '</td>'
+                + '<td>' + (p.uwb_x != null ? p.uwb_x.toFixed(3) : '—') + '</td>'
+                + '<td>' + (p.uwb_y != null ? p.uwb_y.toFixed(3) : '—') + '</td>'
+                + '<td>' + (p.uwb_z != null ? p.uwb_z.toFixed(3) : '—') + '</td>'
+                + '<td>' + (p.error_m != null ? p.error_m.toFixed(4) : '—') + '</td>';
+            tbody.appendChild(tr);
+        });
+    }
+
+    // ---- Apply corrections ----
+
+    window.calApply = function () {
+        if (!currentRunId) return;
+        var msg = document.getElementById('apply-msg');
+        msg.textContent = 'Applying…';
+        msg.style.color = 'var(--text-muted)';
+        api('/calibration/api/apply', 'POST', { run_id: currentRunId }).then(function (r) {
+            if (r.status === 'ok') {
+                msg.textContent = 'Applied ✓';
+                msg.style.color = 'var(--green)';
+                document.getElementById('corr-toggle').checked = true;
+                setText('corr-label', 'Enabled');
+                loadActiveCorrections();
+            } else {
+                msg.textContent = r.msg || 'Error';
+                msg.style.color = 'var(--red)';
+            }
+        });
+    };
+
+    // ---- Toggle corrections ----
+
+    window.calToggle = function (enabled) {
+        api('/calibration/api/toggle', 'POST', { enabled: enabled }).then(function (r) {
+            setText('corr-label', r.enabled ? 'Enabled' : 'Disabled');
+        });
+    };
+
+    // ---- Load active corrections ----
+
+    function loadActiveCorrections() {
+        api('/calibration/api/corrections').then(function (r) {
+            var el = document.getElementById('active-corr');
+            var corr = r.corrections || {};
+            var keys = Object.keys(corr);
+            if (keys.length === 0) {
+                el.innerHTML = '<span style="font-size:12px; color:var(--text-muted);">No corrections stored.</span>';
+                return;
+            }
+            var html = '<table class="corr-table"><thead><tr><th>Anchor</th><th>Bias</th><th>Scale</th></tr></thead><tbody>';
+            keys.forEach(function (did) {
+                var c = corr[did];
+                html += '<tr><td>' + (c.hex || did) + '</td><td>' + (c.bias != null ? c.bias.toFixed(4) : '—') + '</td><td>' + (c.scale != null ? c.scale.toFixed(4) : '—') + '</td></tr>';
+            });
+            html += '</tbody></table>';
+            el.innerHTML = html;
+        });
+    }
+
+    // ---- Run history ----
+
+    function loadRuns() {
+        api('/calibration/api/runs').then(function (runs) {
+            var tbody = document.querySelector('#runs-table tbody');
+            tbody.innerHTML = '';
+            runs.forEach(function (r) {
+                var tr = document.createElement('tr');
+                tr.onclick = function () { loadRunDetail(r.id); };
+                tr.innerHTML = '<td>' + r.id + '</td>'
+                    + '<td>' + (r.name || '—') + '</td>'
+                    + '<td><span class="status-dot ' + r.status + '"></span>' + r.status + '</td>'
+                    + '<td>' + r.n_points + '</td>';
+                tbody.appendChild(tr);
+            });
+        });
+    }
+
+    // ---- Init ----
+    loadRuns();
+    loadActiveCorrections();
+
+})();

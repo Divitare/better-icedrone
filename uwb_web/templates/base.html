@@ -19,6 +19,7 @@
             <a href="{{ url_for('system.index') }}" class="{% if request.endpoint == 'system.index' %}active{% endif %}">System</a>
             <a href="{{ url_for('position.index') }}" class="{% if request.endpoint == 'position.index' %}active{% endif %}">Position</a>
             <a href="{{ url_for('motion.index') }}" class="{% if request.endpoint == 'motion.index' %}active{% endif %}">Motion</a>
+            <a href="{{ url_for('calibration.index') }}" class="{% if request.endpoint and request.endpoint.startswith('calibration.') %}active{% endif %}">Calibration</a>
             {% if current_user.is_authenticated and current_user.is_admin %}
             <a href="{{ url_for('admin.index') }}" class="{% if request.endpoint and request.endpoint.startswith('admin.') %}active{% endif %}">Admin</a>
             {% endif %}

@@ -95,6 +95,7 @@ def create_app(config_path=None, testing=False, db_uri=None):
     from uwb_web.routes.position import bp as position_bp
     from uwb_web.routes.motion import bp as motion_bp
     from uwb_web.routes.admin import bp as admin_bp
+    from uwb_web.routes.calibration import bp as calibration_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -108,6 +109,7 @@ def create_app(config_path=None, testing=False, db_uri=None):
     app.register_blueprint(position_bp)
     app.register_blueprint(motion_bp)
     app.register_blueprint(admin_bp)
+    app.register_blueprint(calibration_bp)
 
     # --- Require login for all routes except auth and static ---
     @app.before_request
