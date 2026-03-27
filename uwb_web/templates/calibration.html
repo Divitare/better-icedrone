@@ -68,6 +68,25 @@
     .points-table td { padding: 3px 4px; font-family: var(--mono); border-bottom: 1px solid #eee; }
 
     .btn-stop { background: var(--red); color: #fff; font-weight: 700; }
+
+    /* tooltips */
+    .has-tip { position: relative; cursor: help; border-bottom: 1px dashed var(--text-muted); }
+    .has-tip::after {
+        content: attr(data-tip); position: absolute; left: 0; bottom: 100%; margin-bottom: 6px;
+        background: #222; color: #f0f0f0; font-size: 11px; line-height: 1.4; font-weight: 400;
+        padding: 6px 10px; border-radius: 6px; white-space: normal; width: 240px;
+        pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 50;
+    }
+    .has-tip:hover::after { opacity: 1; }
+
+    /* help panel */
+    .help-panel details { margin-bottom: 10px; }
+    .help-panel summary { font-weight: 600; font-size: 12px; cursor: pointer; padding: 2px 0; }
+    .help-panel summary:hover { color: var(--primary); }
+    .help-panel p, .help-panel ul { font-size: 11.5px; color: var(--text-muted); margin: 4px 0; line-height: 1.5; }
+    .help-panel ul { padding-left: 16px; }
+    .help-panel code { background: var(--bg); padding: 1px 4px; border-radius: 3px; font-size: 11px; font-family: var(--mono); }
+    .help-panel .rec { display: inline-block; background: #e8f5e9; color: #2e7d32; font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 3px; text-transform: uppercase; }
 </style>
 {% endblock %}
 
@@ -81,7 +100,8 @@
         <div class="panel">
             <h3>UWB Origin Offset</h3>
             <p style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">
-                Where the motion controller's (0, 0, 0) sits in UWB room coordinates (metres).
+                Where the motion controller's (0,&thinsp;0,&thinsp;0) sits in UWB room coordinates (metres).
+                <span class="has-tip" data-tip="Measure where the motion controller origin is in your UWB coordinate system. The calibration will add this offset so real-world positions match UWB positions.">&#9432;</span>
             </p>
             <div class="param-row">
                 <div class="param-group">
@@ -104,7 +124,12 @@
             <h3>Grid Configuration</h3>
             <table class="grid-table">
                 <thead>
-                    <tr><th>Axis</th><th>Start (mm)</th><th>Spacing (mm)</th><th># Points</th></tr>
+                    <tr>
+                        <th>Axis</th>
+                        <th><span class="has-tip" data-tip="First position along this axis in millimetres.">Start (mm)</span></th>
+                        <th><span class="has-tip" data-tip="Distance between grid points in millimetres. More spacing covers a larger area.">Spacing (mm)</span></th>
+                        <th><span class="has-tip" data-tip="Number of points along this axis. Total grid = X × Y × Z points.">Points</span></th>
+                    </tr>
                 </thead>
                 <tbody>
                     <tr>
@@ -129,11 +154,11 @@
             </table>
             <div class="param-row">
                 <div class="param-group">
-                    <label>Dwell (s)</label>
+                    <label class="has-tip" data-tip="How long to stay at each grid point collecting UWB ranges. Longer = more samples = better averaging. 2–5 s is typical.">Dwell (s)</label>
                     <input type="number" id="cal-dwell" value="3" min="0.5" step="0.5">
                 </div>
                 <div class="param-group">
-                    <label>Speed (mm/s)</label>
+                    <label class="has-tip" data-tip="Motion controller travel speed between grid points in mm/s. Slower is safer for the hardware. 10–50 mm/s is typical.">Speed (mm/s)</label>
                     <input type="number" id="cal-speed" value="10" min="0.1" step="1">
                 </div>
                 <div class="param-group">
@@ -235,33 +260,114 @@
                     <input type="checkbox" id="eng-ekf" checked onchange="saveEngine()">
                     <span class="slider"></span>
                 </label>
-                <span style="font-size: 12px;">Kalman Filter</span>
+                <span class="has-tip" style="font-size: 12px;" data-tip="Extended Kalman Filter — fuses range measurements over time to track position and velocity. Smooths noise and predicts motion between measurements.">Kalman Filter</span>
             </div>
             <div class="toggle-row" style="margin-bottom: 6px;">
                 <label class="toggle">
                     <input type="checkbox" id="eng-nlos" checked onchange="saveEngine()">
                     <span class="slider"></span>
                 </label>
-                <span style="font-size: 12px;">NLOS Rejection</span>
+                <span class="has-tip" style="font-size: 12px;" data-tip="Non-Line-of-Sight rejection — detects anchors whose signal bounced off walls/obstacles and excludes them from the position solution.">NLOS Rejection</span>
             </div>
             <div class="param-row">
                 <div class="param-group">
-                    <label>NLOS Threshold (m)</label>
-                    <input type="number" id="eng-nlos-thr" value="0.5" min="0.05" step="0.05" style="width: 70px;" onchange="saveEngine()">
+                    <label class="has-tip" data-tip="Maximum acceptable residual error per anchor (metres). Anchors with residuals above this are classified as NLOS and dropped. Lower = more aggressive filtering. Recommended: 0.3–1.0 m.">NLOS Threshold (m)</label>
+                    <input type="number" id="eng-nlos-thr" value="0.5" min="0.05" step="0.05" style="width: 70px;" onchange="saveEngine()" title="0.3 = aggressive, 0.5 = balanced, 1.0 = permissive">
                 </div>
                 <div class="param-group">
-                    <label>Process Noise</label>
-                    <input type="number" id="eng-pn" value="0.1" min="0.001" step="0.01" style="width: 70px;" onchange="saveEngine()">
+                    <label class="has-tip" data-tip="Acceleration uncertainty (m/s²). Controls how much the filter trusts the motion model vs. new measurements. Higher = faster response but noisier. Lower = smoother but slower to react. Recommended: 0.05–1.0.">Process Noise (m/s²)</label>
+                    <input type="number" id="eng-pn" value="0.1" min="0.001" step="0.01" style="width: 70px;" onchange="saveEngine()" title="0.05 = very smooth, 0.1 = balanced, 0.5–1.0 = fast-moving tag">
                 </div>
             </div>
             <div class="param-row">
                 <div class="param-group">
-                    <label>Default Range Var (m²)</label>
-                    <input type="number" id="eng-rv" value="0.1" min="0.001" step="0.01" style="width: 70px;" onchange="saveEngine()">
+                    <label class="has-tip" data-tip="Default measurement noise per range (m²). Used when no calibration data is available for an anchor. After calibration, per-anchor variances from std_error are used instead. Recommended: 0.01–0.5.">Range Variance (m²)</label>
+                    <input type="number" id="eng-rv" value="0.1" min="0.001" step="0.01" style="width: 70px;" onchange="saveEngine()" title="0.01 = high trust in ranges, 0.1 = typical, 0.5 = noisy environment">
                 </div>
             </div>
-            <button class="btn btn-sm btn-secondary" onclick="resetEKF()" style="margin-top: 4px;">Reset EKF</button>
+            <button class="btn btn-sm btn-secondary" onclick="resetEKF()" style="margin-top: 4px;" title="Discard current EKF state and start fresh — use after manually repositioning the tag">Reset EKF</button>
             <span id="eng-msg" style="font-size: 11px; margin-left: 6px;"></span>
+        </div>
+
+        <!-- Help & tuning guide -->
+        <div class="panel help-panel">
+            <h3>Help &amp; Tuning Guide</h3>
+            <p style="margin-bottom: 8px;">Hover any <span class="has-tip" data-tip="Like this!">underlined label</span> for a quick explanation. Expand sections below for detailed guidance.</p>
+
+            <details>
+                <summary>Kalman Filter (EKF)</summary>
+                <p>The Extended Kalman Filter tracks position <strong>and velocity</strong> over time. It works like image stabilisation — using temporal coherence to smooth out noise.</p>
+                <ul>
+                    <li><strong>When to enable:</strong> Always recommended for a moving tag. You can disable it for static/diagnostic tests.</li>
+                    <li><strong>Process Noise</strong> controls responsiveness:
+                        <ul>
+                            <li><code>0.01–0.05</code> — very smooth; best for slow or stationary tags</li>
+                            <li><code>0.1</code> <span class="rec">default</span> — good balance for walking speed</li>
+                            <li><code>0.5–1.0</code> — follow fast motion / quick direction changes</li>
+                        </ul>
+                    </li>
+                    <li><strong>Range Variance</strong> tells the filter how noisy the raw UWB ranges are:
+                        <ul>
+                            <li><code>0.01</code> — very clean environment, short range, calibrated anchors</li>
+                            <li><code>0.1</code> <span class="rec">default</span> — typical indoor UWB</li>
+                            <li><code>0.3–0.5</code> — long range or heavy multipath</li>
+                        </ul>
+                    </li>
+                    <li><strong>After calibration</strong>, per-anchor variances are computed automatically from the calibration std error — the default range variance is only used for uncalibrated anchors.</li>
+                    <li><strong>Reset EKF</strong> when you physically move the tag to a new location, otherwise the filter will try to smoothly track to the new position.</li>
+                </ul>
+            </details>
+
+            <details>
+                <summary>NLOS Rejection</summary>
+                <p>In indoor environments, UWB signals can bounce off walls, creating reflected paths (NLOS) that make the anchor report a <em>longer</em> range than the true distance.</p>
+                <ul>
+                    <li><strong>How it works:</strong> After an initial position solve, each anchor's expected range is compared to the measured range. The worst outlier is dropped and the position is re-solved. This repeats until all residuals are below the threshold (or only 3 anchors remain).</li>
+                    <li><strong>NLOS Threshold</strong> — the residual cutoff in metres:
+                        <ul>
+                            <li><code>0.3</code> — aggressive; use with many anchors (&ge; 6)</li>
+                            <li><code>0.5</code> <span class="rec">default</span> — balanced</li>
+                            <li><code>0.8–1.0</code> — permissive; only reject very bad reflections</li>
+                        </ul>
+                    </li>
+                    <li><strong>Minimum anchors:</strong> Rejection requires &ge; 4 anchors so that at least 3 remain after a drop. If you only have 3, disable this.</li>
+                </ul>
+            </details>
+
+            <details>
+                <summary>Calibration Workflow</summary>
+                <p>Calibration measures 'ground truth' positions with the motion controller and compares them to UWB ranges to compute per-anchor bias and scale corrections.</p>
+                <ul>
+                    <li><strong>Grid setup:</strong> Aim for at least 9 points (3 &times; 3) spread across the working area. More points = more robust fit.</li>
+                    <li><strong>Dwell time:</strong> How long to average ranges at each point. 2–5 s is typical; longer improves noise averaging but takes more time.</li>
+                    <li><strong>Apply Corrections:</strong> Saves per-anchor bias/scale to the system, immediately correcting live ranges.</li>
+                    <li>After applying, the Position Engine automatically loads the new per-anchor variances — anchors with lower calibration error get higher weight.</li>
+                </ul>
+            </details>
+
+            <details>
+                <summary>Trajectory Smoother ("Deblur")</summary>
+                <p>The RTS smoother is the equivalent of deblurring a photograph — it reprocesses an entire recorded trajectory using <strong>both past and future</strong> data to produce the sharpest possible path.</p>
+                <ul>
+                    <li><strong>When to use:</strong> After a calibration run or any recorded session. It cannot improve real-time tracking (which only sees the past).</li>
+                    <li><strong>Process noise &amp; measurement noise</strong> parameters work the same way as in the Kalman Filter section.</li>
+                    <li>The smoother is most effective on trajectories with consistent motion — if the tag was stationary, there's nothing to 'deblur'.</li>
+                </ul>
+            </details>
+
+            <details>
+                <summary>Quick-Start Recommendations</summary>
+                <ul>
+                    <li>Enable both <strong>EKF</strong> and <strong>NLOS rejection</strong>.</li>
+                    <li>Run a <strong>3 &times; 3</strong> calibration grid covering most of your working area.</li>
+                    <li><strong>Apply corrections</strong> — this also loads per-anchor weights into the engine.</li>
+                    <li>Start with the defaults (<code>process noise = 0.1</code>, <code>NLOS threshold = 0.5</code>, <code>range var = 0.1</code>).</li>
+                    <li>If the position <strong>jumps too much</strong>: lower process noise (e.g. <code>0.05</code>).</li>
+                    <li>If the position <strong>lags behind motion</strong>: raise process noise (e.g. <code>0.3</code>).</li>
+                    <li>If <strong>good anchors</strong> get dropped: raise NLOS threshold (e.g. <code>0.8</code>).</li>
+                    <li>If a <strong>bad anchor</strong> isn't removed: lower NLOS threshold (e.g. <code>0.3</code>).</li>
+                </ul>
+            </details>
         </div>
 
         <!-- Smoothed trajectory results -->
