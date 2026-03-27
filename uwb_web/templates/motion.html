@@ -95,12 +95,12 @@
             <h3>Manual Jog (Relative)</h3>
             <div class="param-row">
                 <div class="param-group">
-                    <label>Step (mm)</label>
-                    <input type="number" id="jog-step" value="10" min="0.1" step="1">
+                    <label class="has-tip" data-tip="Distance to move per button press in mm. Smaller steps give finer control. Recommended: 1–10 mm for precise work, 50–100 mm for coarse repositioning.">Step (mm)</label>
+                    <input type="number" id="jog-step" value="10" min="0.1" step="1" title="Start: 10 mm">
                 </div>
                 <div class="param-group">
-                    <label>Speed (mm/s)</label>
-                    <input type="number" id="jog-speed" value="5" min="0.1" step="1">
+                    <label class="has-tip" data-tip="Travel speed for each jog move in mm/s. Slower is safer near obstacles. Recommended: 5–20 mm/s.">Speed (mm/s)</label>
+                    <input type="number" id="jog-speed" value="5" min="0.1" step="1" title="Start: 5 mm/s">
                 </div>
             </div>
             <div style="display: flex; gap: 24px; align-items: start; flex-wrap: wrap;">
@@ -133,20 +133,20 @@
             <h3>Move to Position (Absolute)</h3>
             <div class="abs-row">
                 <div class="param-group">
-                    <label>X (mm)</label>
+                    <label class="has-tip" data-tip="Absolute X coordinate in mm from the home position.">X (mm)</label>
                     <input type="number" id="abs-x" value="0" step="0.1">
                 </div>
                 <div class="param-group">
-                    <label>Y (mm)</label>
+                    <label class="has-tip" data-tip="Absolute Y coordinate in mm from the home position.">Y (mm)</label>
                     <input type="number" id="abs-y" value="0" step="0.1">
                 </div>
                 <div class="param-group">
-                    <label>Z (mm)</label>
+                    <label class="has-tip" data-tip="Absolute Z coordinate in mm from the home position.">Z (mm)</label>
                     <input type="number" id="abs-z" value="0" step="0.1">
                 </div>
                 <div class="param-group">
-                    <label>Speed (mm/s)</label>
-                    <input type="number" id="abs-speed" value="5" min="0.1" step="1">
+                    <label class="has-tip" data-tip="Travel speed for the move in mm/s. Recommended starting value: 5 mm/s. Max depends on your controller.">Speed (mm/s)</label>
+                    <input type="number" id="abs-speed" value="5" min="0.1" step="1" title="Start: 5 mm/s">
                 </div>
                 <button class="btn" onclick="moveAbsolute()">Go</button>
             </div>
@@ -157,7 +157,12 @@
             <h3>Grid Automation</h3>
             <table class="grid-table">
                 <thead>
-                    <tr><th>Axis</th><th>Start (mm)</th><th>Spacing (mm)</th><th># Points</th></tr>
+                    <tr>
+                        <th>Axis</th>
+                        <th><span class="has-tip" data-tip="First position along this axis in mm.">Start (mm)</span></th>
+                        <th><span class="has-tip" data-tip="Distance between grid points in mm. Total range = spacing × (points − 1).">Spacing (mm)</span></th>
+                        <th><span class="has-tip" data-tip="Number of points along this axis. Total grid = X × Y × Z points.">Points</span></th>
+                    </tr>
                 </thead>
                 <tbody>
                     <tr>
@@ -182,24 +187,24 @@
             </table>
             <div class="grid-params">
                 <div class="param-group">
-                    <label>Pattern</label>
+                    <label class="has-tip" data-tip="Zig-Zag alternates direction each row (faster, less wear). Typewriter always returns to the start of each row (more predictable).">Pattern</label>
                     <select id="grid-pattern"><option value="zig-zag">Zig-Zag</option><option value="typewriter">Typewriter</option></select>
                 </div>
                 <div class="param-group">
-                    <label>Speed (mm/s)</label>
-                    <input type="number" id="grid-speed" value="10" min="0.1" step="1">
+                    <label class="has-tip" data-tip="Travel speed between grid points in mm/s. Slower is more precise and safer. Recommended: 5–20 mm/s.">Speed (mm/s)</label>
+                    <input type="number" id="grid-speed" value="10" min="0.1" step="1" title="Start: 10 mm/s">
                 </div>
                 <div class="param-group">
-                    <label>Accel (mm/s²)</label>
-                    <input type="number" id="grid-accel" value="1000" min="1" step="100">
+                    <label class="has-tip" data-tip="Acceleration/deceleration for the motion controller in mm/s². Higher = snappier moves but more vibration. Recommended: 500–2000. Start: 1000.">Accel (mm/s²)</label>
+                    <input type="number" id="grid-accel" value="1000" min="1" step="100" title="Start: 1000 mm/s²">
                 </div>
                 <div class="param-group">
-                    <label>Wait (s)</label>
-                    <input type="number" id="grid-wait" value="0.5" min="0" step="0.1">
+                    <label class="has-tip" data-tip="Dwell time at each grid point in seconds. Allows vibrations to settle and UWB to collect stable readings. Recommended: 0.5–3 s.">Wait (s)</label>
+                    <input type="number" id="grid-wait" value="0.5" min="0" step="0.1" title="Start: 0.5 s">
                 </div>
                 <div class="param-group">
-                    <label>Reps</label>
-                    <input type="number" id="grid-reps" value="1" min="1" step="1">
+                    <label class="has-tip" data-tip="How many times to repeat the full grid pattern. More reps = more data for averaging. Recommended: 1 for quick checks, 3–5 for thorough calibration.">Reps</label>
+                    <input type="number" id="grid-reps" value="1" min="1" step="1" title="Start: 1">
                 </div>
                 <button class="btn" onclick="startGrid()">Start Grid</button>
             </div>
@@ -225,22 +230,22 @@
             <h3>Connection</h3>
             <div class="param-row">
                 <div class="param-group">
-                    <label>Host / IP</label>
-                    <input type="text" id="cfg-host" value="{{ motion_cfg.host }}" style="width:130px;">
+                    <label class="has-tip" data-tip="Hostname or IP address of the motion controller. Use 'localhost' or '127.0.0.1' if the controller runs on the same machine.">Host / IP</label>
+                    <input type="text" id="cfg-host" value="{{ motion_cfg.host }}" style="width:130px;" title="e.g. 192.168.1.100">
                 </div>
                 <div class="param-group">
-                    <label>Port</label>
+                    <label class="has-tip" data-tip="TCP port of the motion controller. Check your controller's documentation for the correct port.">Port</label>
                     <input type="number" id="cfg-port" value="{{ motion_cfg.port }}" min="1" max="65535" style="width:70px;">
                 </div>
             </div>
             <div class="param-row">
                 <div class="param-group">
-                    <label>Connect timeout (s)</label>
-                    <input type="number" id="cfg-ctimeout" value="{{ motion_cfg.connect_timeout }}" min="0.5" step="0.5" style="width:70px;">
+                    <label class="has-tip" data-tip="Max time to wait for the TCP connection to be established. Increase if the controller is on a slow network. Recommended: 2–5 s.">Connect timeout (s)</label>
+                    <input type="number" id="cfg-ctimeout" value="{{ motion_cfg.connect_timeout }}" min="0.5" step="0.5" style="width:70px;" title="Start: 2 s">
                 </div>
                 <div class="param-group">
-                    <label>Read timeout (s)</label>
-                    <input type="number" id="cfg-rtimeout" value="{{ motion_cfg.read_timeout }}" min="1" step="1" style="width:70px;">
+                    <label class="has-tip" data-tip="Max time to wait for a response after sending a command. Increase for slow moves. Recommended: 10–60 s.">Read timeout (s)</label>
+                    <input type="number" id="cfg-rtimeout" value="{{ motion_cfg.read_timeout }}" min="1" step="1" style="width:70px;" title="Start: 30 s">
                 </div>
             </div>
             <button class="btn btn-sm" onclick="saveConnection()" style="margin-top:4px;">Save &amp; Reconnect</button>
@@ -251,8 +256,8 @@
             <h3>Settings</h3>
             <div class="param-row">
                 <div class="param-group">
-                    <label>Acceleration (mm/s²)</label>
-                    <input type="number" id="set-accel" value="1000" min="1" step="100">
+                    <label class="has-tip" data-tip="Global acceleration for all moves in mm/s². Higher = snappier but can cause vibration. Start with 1000 and adjust. Typical range: 200–5000.">Acceleration (mm/s²)</label>
+                    <input type="number" id="set-accel" value="1000" min="1" step="100" title="Start: 1000 mm/s²">
                 </div>
                 <button class="btn btn-sm" onclick="setAccel()">Set</button>
             </div>

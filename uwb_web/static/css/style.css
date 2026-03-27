@@ -261,3 +261,14 @@ hr { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
 .flash-info { background: #dff9fb; color: #0a3d62; }
 .flash-success { background: #d5f5e3; color: #1e8449; }
 .flash-error, .flash-danger { background: #fadbd8; color: #922b21; }
+
+/* --- Tooltips --- */
+.has-tip { position: relative; cursor: help; border-bottom: 1px dashed var(--text-muted); }
+.has-tip::after {
+    content: attr(data-tip); position: absolute; left: 0; bottom: 100%; margin-bottom: 6px;
+    background: #222; color: #f0f0f0; font-size: 11px; line-height: 1.4; font-weight: 400;
+    padding: 6px 10px; border-radius: 6px; white-space: normal; width: 240px;
+    pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 50;
+}
+.has-tip:hover::after { opacity: 1; }
+.tip-right::after { left: auto; right: 0; }

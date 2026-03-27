@@ -11,9 +11,11 @@
             <th>Label</th>
             <th>First seen</th>
             <th>Last seen</th>
-            <th>Anchor</th>
-            <th>Expected</th>
-            <th>X</th><th>Y</th><th>Z</th>
+            <th><span class="has-tip" data-tip="Mark devices that are fixed-position reference nodes (anchors). Anchor coordinates are used for trilateration.">Anchor</span></th>
+            <th><span class="has-tip" data-tip="Mark devices that should always be present. Useful for monitoring — you'll know if an expected anchor goes offline.">Expected</span></th>
+            <th><span class="has-tip" data-tip="Anchor X coordinate in metres (room coordinate system). Measure precisely — anchor positions directly affect position accuracy.">X</span></th>
+            <th><span class="has-tip" data-tip="Anchor Y coordinate in metres.">Y</span></th>
+            <th><span class="has-tip" data-tip="Anchor Z coordinate in metres. Set to 0 for 2D trilateration.">Z</span></th>
             <th>Actions</th>
         </tr>
     </thead>
@@ -45,23 +47,23 @@
 
 <form method="post" action="{{ url_for('devices.update_config') }}" class="config-form">
     <div class="form-group">
-        <label>Serial port</label>
-        <input type="text" name="serial_port" value="{{ config.get('serial_port', 'auto') }}" placeholder="auto or /dev/ttyUSB0">
+        <label class="has-tip" data-tip="Serial port connected to the UWB module. Use 'auto' to scan automatically, or specify the exact port (e.g. COM3, /dev/ttyUSB0). Start: auto.">Serial port</label>
+        <input type="text" name="serial_port" value="{{ config.get('serial_port', 'auto') }}" placeholder="auto or /dev/ttyUSB0" title="Start: auto">
     </div>
     <div class="form-group">
-        <label>Baud rate</label>
-        <input type="number" name="serial_baud" value="{{ config.get('serial_baud', '115200') }}">
+        <label class="has-tip" data-tip="Serial baud rate for the UWB module. Must match your module's configuration. Almost always 115200.">Baud rate</label>
+        <input type="number" name="serial_baud" value="{{ config.get('serial_baud', '115200') }}" title="Start: 115200">
     </div>
     <div class="form-group">
-        <label>Retention — raw lines (days)</label>
-        <input type="number" name="retention_days_raw" value="{{ config.get('retention_days_raw', '30') }}">
+        <label class="has-tip" data-tip="How many days of raw serial lines to keep before automatic cleanup. Lower values save disk space. Recommended: 7–30 days.">Retention — raw lines (days)</label>
+        <input type="number" name="retention_days_raw" value="{{ config.get('retention_days_raw', '30') }}" title="Start: 30">
     </div>
     <div class="form-group">
-        <label>Retention — measurements (days)</label>
-        <input type="number" name="retention_days_measurements" value="{{ config.get('retention_days_measurements', '365') }}">
+        <label class="has-tip" data-tip="How many days of parsed measurement data to keep. This is the main position/range data. Recommended: 90–365 days.">Retention — measurements (days)</label>
+        <input type="number" name="retention_days_measurements" value="{{ config.get('retention_days_measurements', '365') }}" title="Start: 365">
     </div>
     <div class="form-group">
-        <label>
+        <label class="has-tip" data-tip="When enabled, every raw line from the serial port is saved. Useful for debugging and replaying data, but uses more disk space. Disable on storage-constrained systems.">
             <input type="checkbox" name="store_raw_lines" {% if config.get('store_raw_lines', 'true') == 'true' %}checked{% endif %}>
             Store raw serial lines
         </label>

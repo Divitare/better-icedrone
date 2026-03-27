@@ -69,16 +69,6 @@
 
     .btn-stop { background: var(--red); color: #fff; font-weight: 700; }
 
-    /* tooltips */
-    .has-tip { position: relative; cursor: help; border-bottom: 1px dashed var(--text-muted); }
-    .has-tip::after {
-        content: attr(data-tip); position: absolute; left: 0; bottom: 100%; margin-bottom: 6px;
-        background: #222; color: #f0f0f0; font-size: 11px; line-height: 1.4; font-weight: 400;
-        padding: 6px 10px; border-radius: 6px; white-space: normal; width: 240px;
-        pointer-events: none; opacity: 0; transition: opacity .15s; z-index: 50;
-    }
-    .has-tip:hover::after { opacity: 1; }
-
     /* help panel */
     .help-panel details { margin-bottom: 10px; }
     .help-panel summary { font-weight: 600; font-size: 12px; cursor: pointer; padding: 2px 0; }
@@ -105,16 +95,16 @@
             </p>
             <div class="param-row">
                 <div class="param-group">
-                    <label>Origin X (m)</label>
-                    <input type="number" id="origin-x" value="0" step="0.01">
+                    <label class="has-tip" data-tip="X offset from UWB origin to the motion controller's (0,0,0) in metres. Measure with a tape measure or set to 0 if they coincide.">Origin X (m)</label>
+                    <input type="number" id="origin-x" value="0" step="0.01" title="Start: 0">
                 </div>
                 <div class="param-group">
-                    <label>Origin Y (m)</label>
-                    <input type="number" id="origin-y" value="0" step="0.01">
+                    <label class="has-tip" data-tip="Y offset from UWB origin to motion controller origin in metres.">Origin Y (m)</label>
+                    <input type="number" id="origin-y" value="0" step="0.01" title="Start: 0">
                 </div>
                 <div class="param-group">
-                    <label>Origin Z (m)</label>
-                    <input type="number" id="origin-z" value="0" step="0.01">
+                    <label class="has-tip" data-tip="Z offset from UWB origin to motion controller origin in metres. Usually 0 for a floor-level setup.">Origin Z (m)</label>
+                    <input type="number" id="origin-z" value="0" step="0.01" title="Start: 0">  
                 </div>
             </div>
         </div>
@@ -162,7 +152,7 @@
                     <input type="number" id="cal-speed" value="10" min="0.1" step="1">
                 </div>
                 <div class="param-group">
-                    <label>Run Name</label>
+                    <label class="has-tip" data-tip="Optional label for this calibration run, e.g. 'Lab 3×3' or 'Post-move check'. Makes it easier to identify runs later.">Run Name</label>
                     <input type="text" id="cal-name" value="" placeholder="optional" style="width: 140px;">
                 </div>
             </div>
@@ -238,7 +228,7 @@
                     <input type="checkbox" id="corr-toggle" {% if corrections_enabled %}checked{% endif %} onchange="calToggle(this.checked)">
                     <span class="slider"></span>
                 </label>
-                <span id="corr-label">{{ 'Enabled' if corrections_enabled else 'Disabled' }}</span>
+                <span class="has-tip" id="corr-label" data-tip="When enabled, per-anchor bias and scale corrections are applied to all incoming UWB ranges in real time. Disable to see raw uncorrected data.">{{ 'Enabled' if corrections_enabled else 'Disabled' }}</span>
             </div>
             <div id="active-corr" style="margin-top: 10px;"></div>
         </div>
