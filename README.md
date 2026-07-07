@@ -81,9 +81,16 @@ Open **http://\<pi-ip\>:5000** in a browser.
 
 ```bash
 cd /opt/uwb-web
-sudo bash install.sh
-# Choose option 1 to update code + deps (keeps data & config)
+sudo bash install.sh --update
 ```
+
+Or update directly from GitHub:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/Divitare/better-icedrone/main/install.sh | sudo bash -s -- --update
+```
+
+The update mode keeps `/opt/uwb-web/data/uwb_data.db`, so users, sessions, measurements, devices, and calibration data stay in place. Before updating, it also writes a safety copy to `/opt/uwb-web/data/backups/`.
 
 ---
 

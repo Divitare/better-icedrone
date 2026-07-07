@@ -34,7 +34,7 @@ def _tty_getpass(prompt):
 
 
 def create_admin():
-    app = create_app()
+    app = create_app(start_worker=False)
     with app.app_context():
         db.create_all()
 

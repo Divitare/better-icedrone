@@ -17,7 +17,7 @@ def get_sse_broadcaster():
     return _sse_broadcaster
 
 
-def create_app(config_path=None, testing=False, db_uri=None):
+def create_app(config_path=None, testing=False, db_uri=None, start_worker=True):
     global _serial_worker, _sse_broadcaster
 
     from flask import Flask, redirect, url_for, request as flask_request
@@ -133,7 +133,7 @@ def create_app(config_path=None, testing=False, db_uri=None):
 
     # --- Serial worker ---
     # Only start in the actual serving process, not in Werkzeug's reloader parent.
-    if not app.config.get('TESTING'):
+    if start_worker and not app.config.get('TESTING'):
         is_reloader_parent = (
             config['web'].get('debug', False)
             and os.environ.get('WERKZEUG_RUN_MAIN') != 'true'

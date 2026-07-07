@@ -26,7 +26,7 @@ from uwb_web.services.session_service import get_active_session, create_session
 
 
 def replay(filepath, speed):
-    app = create_app()
+    app = create_app(start_worker=False)
 
     with app.app_context():
         session = get_active_session()

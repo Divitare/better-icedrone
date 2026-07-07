@@ -4,8 +4,10 @@
 # ============================================================================
 # Usage:
 #   curl -sSL https://raw.githubusercontent.com/Divitare/better-icedrone/main/install.sh | sudo bash
+#   curl -sSL https://raw.githubusercontent.com/Divitare/better-icedrone/main/install.sh | sudo bash -s -- --update
 #   — or —
 #   sudo bash install.sh
+#   sudo bash install.sh --update
 #
 # Handles:
 #   - Fresh installation from GitHub
@@ -26,6 +28,7 @@ DATA_DIR="${INSTALL_DIR}/data"
 SERVICE_USER="uwb"
 SERVICE_FILE="/etc/systemd/system/uwb-web.service"
 BRANCH="main"
+MODE="${1:-}"
 
 # --- Colors ---
 RED='\033[0;31m'
@@ -39,6 +42,38 @@ info()    { echo -e "${CYAN}[INFO]${NC}  $*"; }
 success() { echo -e "${GREEN}[OK]${NC}    $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${NC}  $*"; }
 error()   { echo -e "${RED}[ERROR]${NC} $*"; }
+
+show_usage() {
+    cat <<EOF
+Usage:
+  sudo bash install.sh
+  sudo bash install.sh --update
+
+Remote:
+  curl -sSL https://raw.githubusercontent.com/Divitare/better-icedrone/main/install.sh | sudo bash
+  curl -sSL https://raw.githubusercontent.com/Divitare/better-icedrone/main/install.sh | sudo bash -s -- --update
+
+Modes:
+  --update   Update code, dependencies, database schema, and service.
+             Keeps /opt/uwb-web/data and config.yaml, so users and measurements stay.
+  --help     Show this help.
+EOF
+}
+
+case "${MODE}" in
+    ""|"--update"|"--help")
+        ;;
+    *)
+        error "Unknown option: ${MODE}"
+        show_usage
+        exit 1
+        ;;
+esac
+
+if [[ "${MODE}" == "--help" ]]; then
+    show_usage
+    exit 0
+fi
 
 # --- Pre-checks ---
 
@@ -161,6 +196,20 @@ YAML
     success "Data directory ready."
 }
 
+backup_database() {
+    local db_file="${DATA_DIR}/uwb_data.db"
+    if [[ -f "${db_file}" ]]; then
+        mkdir -p "${DATA_DIR}/backups"
+        local stamp
+        stamp=$(date -u +%Y%m%d-%H%M%S)
+        local backup_file="${DATA_DIR}/backups/uwb_data_${stamp}.db"
+        cp "${db_file}" "${backup_file}"
+        success "Database backup created: ${backup_file}"
+    else
+        info "No existing database found to back up."
+    fi
+}
+
 init_database() {
     info "Initializing database..."
     cd "${INSTALL_DIR}"
@@ -177,7 +226,7 @@ sys.path.insert(0, '${INSTALL_DIR}')
 from uwb_web import create_app
 from uwb_web.db import db
 from uwb_web.models import User
-app = create_app()
+app = create_app(start_worker=False)
 with app.app_context():
     print(User.query.count())
 " 2>/dev/null)
@@ -255,6 +304,23 @@ show_status() {
 
 # --- Update flow ---
 
+do_keep_data_update() {
+    info "Performing safe update (keeps data, users, measurements, and config)..."
+    systemctl stop uwb-web.service 2>/dev/null || true
+    install_system_deps
+    create_service_user
+    backup_database
+    pull_updates
+    setup_venv
+    setup_data_dir
+    init_database
+    setup_admin
+    install_systemd_service
+    set_permissions
+    start_service
+    show_status
+}
+
 do_update() {
     echo ""
     echo -e "${BOLD}=== UWB Web Update ===${NC}"
@@ -270,18 +336,7 @@ do_update() {
 
     case "$choice" in
         1)
-            info "Performing update..."
-            systemctl stop uwb-web.service 2>/dev/null || true
-            install_system_deps
-            pull_updates
-            setup_venv
-            setup_data_dir
-            init_database
-            setup_admin
-            install_systemd_service
-            set_permissions
-            start_service
-            show_status
+            do_keep_data_update
             ;;
         2)
             warn "This will DELETE all existing data and config!"
@@ -334,7 +389,16 @@ echo -e "${BOLD}║   UWB Web Installer — Raspberry Pi   ║${NC}"
 echo -e "${BOLD}╚══════════════════════════════════════╝${NC}"
 echo ""
 
-if [[ -d "${INSTALL_DIR}/.git" ]]; then
+if [[ "${MODE}" == "--update" ]]; then
+    if [[ -d "${INSTALL_DIR}/.git" ]]; then
+        do_keep_data_update
+    else
+        error "No existing installation found at ${INSTALL_DIR}."
+        echo "Run the normal installer first:"
+        echo "  curl -sSL https://raw.githubusercontent.com/Divitare/better-icedrone/main/install.sh | sudo bash"
+        exit 1
+    fi
+elif [[ -d "${INSTALL_DIR}/.git" ]]; then
     do_update
 else
     do_fresh_install

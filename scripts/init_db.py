@@ -10,7 +10,7 @@ from uwb_web import create_app
 from uwb_web.db import db
 from uwb_web.services.config_service import set_defaults
 
-app = create_app()
+app = create_app(start_worker=False)
 
 with app.app_context():
     db.create_all()

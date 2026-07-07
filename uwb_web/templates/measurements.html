@@ -4,6 +4,28 @@
 {% block content %}
 <h1>Live Measurements</h1>
 
+<div class="status-bar">
+    <div class="status-item">
+        <span class="label">Active measurement</span>
+        {% if active_session %}
+            <span class="badge badge-green">Running</span>
+            <span>{{ active_session.name }}</span>
+        {% else %}
+            <span class="badge badge-gray">Idle</span>
+        {% endif %}
+    </div>
+    <form class="inline-form" method="post" action="{{ url_for('measurements.start') }}">
+        <input type="text" name="name" placeholder="Measurement name">
+        <button type="submit" class="btn">Start</button>
+    </form>
+    {% if active_session %}
+    <form class="inline" method="post" action="{{ url_for('measurements.end') }}">
+        <button type="submit" class="btn btn-warning">Stop</button>
+    </form>
+    <a class="btn btn-secondary" href="{{ url_for('export.measurements_csv', session_id=active_session.id) }}">Export Active CSV</a>
+    {% endif %}
+</div>
+
 <!-- Filters -->
 <form class="filter-bar" method="get" action="{{ url_for('measurements.index') }}">
     <select name="device_id">
@@ -20,9 +42,11 @@
         <option value="{{ s.id }}" {% if selected_session == s.id %}selected{% endif %}>{{ s.name }}</option>
         {% endfor %}
     </select>
-    <input type="number" name="limit" value="200" min="10" max="5000" style="width:80px" title="Row limit">
+    <input type="number" name="limit" value="{{ selected_limit }}" min="10" max="5000" style="width:80px" title="Row limit">
     <button type="submit" class="btn">Filter</button>
     <button type="button" class="btn btn-secondary" id="btn-pause">Pause</button>
+    <span class="badge badge-gray" id="pause-state">Live</span>
+    <a class="btn btn-secondary" href="{{ url_for('export.measurements_csv', session_id=selected_session or '', device_id=selected_device or '') }}">Export View CSV</a>
 </form>
 
 <table class="data-table" id="meas-table">
@@ -55,5 +79,16 @@
 {% endblock %}
 
 {% block scripts %}
+<script>
+    var measurementPage = {
+        selectedDeviceId: {{ selected_device | tojson }},
+        selectedSessionId: {{ selected_session | tojson }},
+        sessionNames: {
+            {% for s in sessions %}
+            {{ s.id | tojson }}: {{ s.name | tojson }}{% if not loop.last %},{% endif %}
+            {% endfor %}
+        }
+    };
+</script>
 <script src="{{ url_for('static', filename='js/measurements.js') }}"></script>
 {% endblock %}

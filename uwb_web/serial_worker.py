@@ -297,6 +297,7 @@ class SerialWorker:
                             'device': result.short_addr_hex,
                             'device_id': device.id,
                             'label': device.label,
+                            'session_id': self.current_session_id,
                             'range_m': result.range_m,
                             'rx_power_dbm': result.rx_power_dbm,
                             'timestamp': now_utc.isoformat(),
