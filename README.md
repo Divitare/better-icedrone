@@ -136,6 +136,81 @@ python scripts/demo_serial_replay.py --speed 5.0
 
 ---
 
+## MATLAB Live Access
+
+MATLAB can read live measurements over HTTP from the Raspberry Pi.
+
+First enable the token-protected MATLAB API on the Pi:
+
+```bash
+sudo nano /opt/uwb-web/config.yaml
+```
+
+Add or edit:
+
+```yaml
+api:
+  matlab_token: "change-this-to-a-long-secret-token"
+```
+
+Restart the service:
+
+```bash
+sudo systemctl restart uwb-web
+```
+
+Available endpoints:
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /api/matlab/measurements?since_id=0&limit=500` | Incremental stored measurements, oldest to newest |
+| `GET /api/matlab/latest` | Current live range values from memory |
+| `GET /api/matlab/status` | Serial status and active session |
+
+Quick test from another machine:
+
+```bash
+curl -H "Authorization: Bearer change-this-to-a-long-secret-token" \
+  "http://<pi-ip>:5000/api/matlab/measurements?since_id=0&limit=5"
+```
+
+MATLAB polling example:
+
+```matlab
+piIp = "192.168.0.42";  % Raspberry Pi IP
+token = "change-this-to-a-long-secret-token";
+
+url = "http://" + piIp + ":5000/api/matlab/measurements";
+opts = weboptions( ...
+    "ContentType", "json", ...
+    "Timeout", 5, ...
+    "HeaderFields", {'Authorization', ['Bearer ' char(token)]});
+
+lastId = 0;
+
+while true
+    resp = webread(url, "since_id", lastId, "limit", 500, opts);
+
+    if resp.count > 0
+        T = struct2table(resp.measurements);
+        disp(T(:, ["id", "timestamp_utc", "device_hex", "range_m", "rx_power_dbm"]));
+        lastId = resp.latest_id;
+    end
+
+    pause(0.2);  % 5 Hz polling
+end
+```
+
+For only the latest live values:
+
+```matlab
+latestUrl = "http://" + piIp + ":5000/api/matlab/latest";
+latest = webread(latestUrl, opts);
+devices = struct2table(latest.devices)
+```
+
+---
+
 ## Running as a systemd Service
 
 The installer sets this up automatically. Manual setup:

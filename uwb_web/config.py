@@ -22,6 +22,9 @@ DEFAULT_CONFIG = {
         'port': 5000,
         'debug': False,
     },
+    'api': {
+        'matlab_token': '',
+    },
     'retention': {
         'raw_lines_days': 30,
         'measurements_days': 365,
@@ -62,5 +65,9 @@ def load_config(path=None):
         with open(path, 'r') as f:
             user_config = yaml.safe_load(f) or {}
         _deep_merge(config, user_config)
+
+    env_matlab_token = os.environ.get('UWB_MATLAB_TOKEN')
+    if env_matlab_token:
+        config.setdefault('api', {})['matlab_token'] = env_matlab_token
 
     return config

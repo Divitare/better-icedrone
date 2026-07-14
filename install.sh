@@ -181,6 +181,9 @@ web:
   port: 5000
   debug: false
 
+api:
+  matlab_token: ""
+
 retention:
   raw_lines_days: 30
   measurements_days: 365

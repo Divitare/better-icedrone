@@ -96,6 +96,7 @@ def create_app(config_path=None, testing=False, db_uri=None, start_worker=True):
     from uwb_web.routes.motion import bp as motion_bp
     from uwb_web.routes.admin import bp as admin_bp
     from uwb_web.routes.calibration import bp as calibration_bp
+    from uwb_web.routes.matlab import bp as matlab_bp
 
     app.register_blueprint(auth_bp)
     app.register_blueprint(dashboard_bp)
@@ -110,11 +111,14 @@ def create_app(config_path=None, testing=False, db_uri=None, start_worker=True):
     app.register_blueprint(motion_bp)
     app.register_blueprint(admin_bp)
     app.register_blueprint(calibration_bp)
+    app.register_blueprint(matlab_bp)
 
     # --- Require login for all routes except auth and static ---
     @app.before_request
     def require_login():
         if flask_request.endpoint and flask_request.endpoint.startswith('auth.'):
+            return
+        if flask_request.endpoint and flask_request.endpoint.startswith('matlab.'):
             return
         if flask_request.endpoint == 'static':
             return
