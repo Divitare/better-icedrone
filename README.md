@@ -163,7 +163,9 @@ Available endpoints:
 
 | Endpoint | Description |
 |----------|-------------|
+| `GET /api/matlab/latest-id` | Newest measurement id only, for live cursor setup |
 | `GET /api/matlab/measurements?since_id=0&limit=500` | Incremental stored measurements, oldest to newest |
+| `GET /api/matlab/measurements` | Initialise live cursor at newest id without returning old rows |
 | `GET /api/matlab/latest` | Current live range values from memory |
 | `GET /api/matlab/status` | Serial status and active session |
 
@@ -186,7 +188,8 @@ opts = weboptions( ...
     "Timeout", 5, ...
     "HeaderFields", {'Authorization', ['Bearer ' char(token)]});
 
-lastId = 0;
+cursor = webread(url, opts);
+lastId = cursor.latest_id;  % Start live from the current newest DB row.
 
 while true
     resp = webread(url, "since_id", lastId, "limit", 500, opts);

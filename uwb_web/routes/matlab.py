@@ -4,6 +4,7 @@ import hmac
 from datetime import datetime, timezone
 
 from flask import Blueprint, current_app, jsonify, request
+from sqlalchemy import func
 
 from uwb_web.models import Measurement
 from uwb_web.services import session_service
@@ -55,23 +56,64 @@ def _measurement_to_dict(m):
     }
 
 
+def _measurement_query(device_id=None, session_id=None):
+    q = Measurement.query
+    if device_id:
+        q = q.filter_by(device_id=device_id)
+    if session_id:
+        q = q.filter_by(session_id=session_id)
+    return q
+
+
+def _latest_measurement_id(device_id=None, session_id=None):
+    latest = (
+        _measurement_query(device_id=device_id, session_id=session_id)
+        .with_entities(func.max(Measurement.id))
+        .scalar()
+    )
+    return int(latest or 0)
+
+
+@bp.route('/latest-id')
+def latest_id():
+    """Return only the newest measurement id for cursor initialisation."""
+    device_id = request.args.get('device_id', type=int)
+    session_id = request.args.get('session_id', type=int)
+    latest = _latest_measurement_id(device_id=device_id, session_id=session_id)
+    return jsonify({
+        'server_time_utc': _server_time(),
+        'latest_id': latest,
+    })
+
+
 @bp.route('/measurements')
 def measurements():
-    """Return measurements newer than since_id, ordered oldest to newest."""
+    """Return measurements newer than since_id, ordered oldest to newest.
+
+    If since_id is omitted, initialise the live cursor at the current newest
+    id without returning historical rows. This lets MATLAB start "from now".
+    """
+    since_id_arg = request.args.get('since_id')
     since_id = request.args.get('since_id', 0, type=int)
     limit = request.args.get('limit', 500, type=int)
     device_id = request.args.get('device_id', type=int)
     session_id = request.args.get('session_id', type=int)
 
     limit = max(1, min(limit, 5000))
+    database_latest_id = _latest_measurement_id(device_id=device_id, session_id=session_id)
 
-    q = Measurement.query
+    if since_id_arg is None:
+        return jsonify({
+            'server_time_utc': _server_time(),
+            'count': 0,
+            'latest_id': database_latest_id,
+            'database_latest_id': database_latest_id,
+            'measurements': [],
+        })
+
+    q = _measurement_query(device_id=device_id, session_id=session_id)
     if since_id:
         q = q.filter(Measurement.id > since_id)
-    if device_id:
-        q = q.filter_by(device_id=device_id)
-    if session_id:
-        q = q.filter_by(session_id=session_id)
 
     rows = q.order_by(Measurement.id.asc()).limit(limit).all()
     latest_id = rows[-1].id if rows else since_id
@@ -80,6 +122,7 @@ def measurements():
         'server_time_utc': _server_time(),
         'count': len(rows),
         'latest_id': latest_id,
+        'database_latest_id': database_latest_id,
         'measurements': [_measurement_to_dict(m) for m in rows],
     })
 
