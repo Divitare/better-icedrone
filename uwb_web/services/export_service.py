@@ -2,7 +2,7 @@
 
 import csv
 import io
-from uwb_web.models import Measurement, RawLine, Event, Device, Session
+from uwb_web.models import Measurement, RawLine, Event, Device, Session, FusedPose
 from uwb_web.db import db
 
 
@@ -84,5 +84,44 @@ def export_events_csv(start=None, end=None, session_id=None):
             row.id, row.session_id, row.device_id,
             row.event_time_utc.isoformat() if row.event_time_utc else '',
             row.event_type, row.event_text,
+        ])
+    return output.getvalue()
+
+
+def export_fused_poses_csv(start=None, end=None, session_id=None):
+    q = db.session.query(FusedPose, Session).outerjoin(
+        Session, FusedPose.session_id == Session.id
+    )
+    if start:
+        q = q.filter(FusedPose.pi_received_at_utc >= start)
+    if end:
+        q = q.filter(FusedPose.pi_received_at_utc <= end)
+    if session_id:
+        q = q.filter(FusedPose.session_id == session_id)
+    q = q.order_by(FusedPose.pi_received_at_utc)
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        'id', 'session_id', 'session_name',
+        'pi_received_at_utc', 'matlab_time_utc',
+        'x', 'y', 'z',
+        'qw', 'qx', 'qy', 'qz',
+        'yaw_deg', 'pitch_deg', 'roll_deg',
+        'vx', 'vy', 'vz',
+        'std_x', 'std_y', 'std_z',
+        'num_anchors',
+    ])
+    for fp, session in q.all():
+        writer.writerow([
+            fp.id, fp.session_id, session.name if session else '',
+            fp.pi_received_at_utc.isoformat() if fp.pi_received_at_utc else '',
+            fp.matlab_time_utc.isoformat() if fp.matlab_time_utc else '',
+            fp.x, fp.y, fp.z,
+            fp.qw, fp.qx, fp.qy, fp.qz,
+            fp.yaw, fp.pitch, fp.roll,
+            fp.vx, fp.vy, fp.vz,
+            fp.std_x, fp.std_y, fp.std_z,
+            fp.num_anchors if fp.num_anchors is not None else '',
         ])
     return output.getvalue()

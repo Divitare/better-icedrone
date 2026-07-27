@@ -79,8 +79,15 @@ class SerialWorker:
         self.position_history = deque(maxlen=200)  # list of {x, y, z?, ts}
 
         # Advanced position engine (EKF + WLS + NLOS rejection)
+        # Kept for the calibration / ground-truth workflow only. The live
+        # website position is the MATLAB fused pose pushed in below.
         self._engine = PositionEngine()
         self._engine_loaded = False
+
+        # Fused pose pushed from the external MATLAB filter (laptop)
+        self._fused_lock = threading.Lock()
+        self.last_fused_pose = None
+        self.fused_history = deque(maxlen=600)   # ~60 s at 10 Hz
 
     # ---- lifecycle ----
 
@@ -416,6 +423,22 @@ class SerialWorker:
             return {
                 'position': self.last_position,
                 'history': list(self.position_history),
+            }
+
+    # ---- fused pose (from external MATLAB filter) ----
+
+    def set_fused_pose(self, entry):
+        """Store the latest fused pose (dict) pushed from MATLAB."""
+        with self._fused_lock:
+            self.last_fused_pose = entry
+            self.fused_history.append(entry)
+
+    def get_fused_pose(self):
+        """Return the latest fused pose and a short rolling history."""
+        with self._fused_lock:
+            return {
+                'pose': self.last_fused_pose,
+                'history': list(self.fused_history),
             }
 
     # ---- position estimation ----

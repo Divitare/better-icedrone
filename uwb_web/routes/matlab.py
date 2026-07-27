@@ -6,7 +6,8 @@ from datetime import datetime, timezone
 from flask import Blueprint, current_app, jsonify, request
 from sqlalchemy import func
 
-from uwb_web.models import Measurement
+from uwb_web.db import db
+from uwb_web.models import Measurement, Device, FusedPose
 from uwb_web.services import session_service
 
 bp = Blueprint('matlab', __name__, url_prefix='/api/matlab')
@@ -168,3 +169,133 @@ def status():
         'serial': worker.stats if worker else {},
         'active_session': active.to_dict() if active else None,
     })
+
+
+def _parse_dt(value):
+    """Parse an ISO-8601 timestamp, tolerating a trailing 'Z'."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace('Z', '+00:00'))
+    except (ValueError, TypeError):
+        return None
+
+
+@bp.route('/anchors')
+def anchors():
+    """Anchor devices with known coordinates, for MATLAB frame setup.
+
+    MATLAB uses these if present; if the list is empty (or the Pi is
+    unreachable) MATLAB falls back to its internal anchor table.
+    """
+    rows = (
+        Device.query
+        .filter_by(is_anchor=True)
+        .filter(Device.x.isnot(None), Device.y.isnot(None), Device.z.isnot(None))
+        .order_by(Device.short_addr_hex)
+        .all()
+    )
+    anchor_list = [{
+        'device_id': d.id,
+        'short_addr_hex': d.short_addr_hex,
+        'label': d.label,
+        'x': d.x, 'y': d.y, 'z': d.z,
+    } for d in rows]
+    return jsonify({
+        'server_time_utc': _server_time(),
+        'count': len(anchor_list),
+        'anchors': anchor_list,
+    })
+
+
+@bp.route('/position', methods=['GET', 'POST'])
+def position():
+    """GET: latest fused pose + history for the website.
+    POST: receive a fused pose from the external MATLAB filter.
+    """
+    from uwb_web import get_serial_worker, get_sse_broadcaster
+
+    worker = get_serial_worker()
+
+    if request.method == 'GET':
+        pose = worker.get_fused_pose() if worker else {'pose': None, 'history': []}
+        return jsonify({'server_time_utc': _server_time(), **pose})
+
+    # ---- POST: store a fused pose ----
+    data = request.get_json(silent=True) or {}
+
+    def _num(v):
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return None
+
+    def _vec(name, n):
+        v = data.get(name)
+        if isinstance(v, (list, tuple)) and len(v) >= n:
+            return [_num(v[i]) for i in range(n)]
+        return [None] * n
+
+    pos = data.get('position')
+    if not isinstance(pos, (list, tuple)) or len(pos) < 3:
+        return jsonify({'error': 'bad_request',
+                        'message': 'position must be [x, y, z]'}), 400
+    x, y, z = _num(pos[0]), _num(pos[1]), _num(pos[2])
+    if None in (x, y, z):
+        return jsonify({'error': 'bad_request',
+                        'message': 'position must be numeric'}), 400
+
+    quat = _vec('orientation_quat', 4)
+    eul = _vec('euler_deg', 3)
+    vel = _vec('velocity', 3)
+    std = _vec('pos_std', 3)
+
+    num_anchors = data.get('num_anchors')
+    try:
+        num_anchors = int(num_anchors) if num_anchors is not None else None
+    except (TypeError, ValueError):
+        num_anchors = None
+
+    now_utc = datetime.now(timezone.utc)
+    matlab_time = _parse_dt(data.get('matlab_time_utc'))
+
+    entry = {
+        'x': x, 'y': y, 'z': z,
+        'quat': quat,
+        'euler_deg': eul,
+        'velocity': vel,
+        'pos_std': std,
+        'num_anchors': num_anchors,
+        'pi_received_at_utc': now_utc.isoformat(),
+        'matlab_time_utc': matlab_time.isoformat() if matlab_time else None,
+    }
+
+    # 1) live store for the website
+    if worker:
+        worker.set_fused_pose(entry)
+
+    # 2) persist for CSV export, tied to the worker's current session
+    session_id = worker.current_session_id if worker else None
+    try:
+        db.session.add(FusedPose(
+            session_id=session_id,
+            pi_received_at_utc=now_utc,
+            matlab_time_utc=matlab_time,
+            x=x, y=y, z=z,
+            qw=quat[0], qx=quat[1], qy=quat[2], qz=quat[3],
+            yaw=eul[0], pitch=eul[1], roll=eul[2],
+            vx=vel[0], vy=vel[1], vz=vel[2],
+            std_x=std[0], std_y=std[1], std_z=std[2],
+            num_anchors=num_anchors,
+        ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.exception('Failed to store fused pose')
+
+    # 3) live push to browsers
+    broadcaster = get_sse_broadcaster()
+    if broadcaster:
+        broadcaster.publish({'type': 'fused_position', **entry})
+
+    return jsonify({'ok': True, 'stored_session_id': session_id})

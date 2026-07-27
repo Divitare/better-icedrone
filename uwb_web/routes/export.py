@@ -54,3 +54,16 @@ def events_csv():
         csv_data, mimetype='text/csv',
         headers={'Content-Disposition': 'attachment; filename=events.csv'},
     )
+
+
+@bp.route('/fused_poses')
+def fused_poses_csv():
+    csv_data = export_service.export_fused_poses_csv(
+        start=_try_iso(request.args.get('start')),
+        end=_try_iso(request.args.get('end')),
+        session_id=request.args.get('session_id', type=int),
+    )
+    return Response(
+        csv_data, mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=fused_poses.csv'},
+    )

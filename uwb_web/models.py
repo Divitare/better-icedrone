@@ -216,3 +216,67 @@ class CalibrationPoint(db.Model):
 
     error_m = db.Column(db.Float, nullable=True)   # Euclidean distance to true position
     collected_at_utc = db.Column(db.DateTime, nullable=True)
+
+
+class FusedPose(db.Model):
+    """A fused pose pushed from the external MATLAB Kalman filter (laptop).
+
+    The MATLAB INS filter fuses phone IMU + UWB and posts its result here so
+    the website can display it live and it can be exported for offline
+    analysis. All coordinates are in the UWB anchor frame.
+    """
+    __tablename__ = 'fused_poses'
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey('sessions.id'), nullable=True, index=True)
+
+    # pi_received_at_utc is the common clock everything on the Pi shares.
+    pi_received_at_utc = db.Column(db.DateTime, nullable=False, index=True)
+    matlab_time_utc = db.Column(db.DateTime, nullable=True)   # sender's own timestamp
+
+    # Position in the anchor frame [m]
+    x = db.Column(db.Float, nullable=False)
+    y = db.Column(db.Float, nullable=False)
+    z = db.Column(db.Float, nullable=False)
+
+    # Orientation quaternion (body -> anchor), [w, x, y, z]
+    qw = db.Column(db.Float, nullable=True)
+    qx = db.Column(db.Float, nullable=True)
+    qy = db.Column(db.Float, nullable=True)
+    qz = db.Column(db.Float, nullable=True)
+
+    # Orientation as Euler angles [deg] (ZYX) for convenience
+    yaw = db.Column(db.Float, nullable=True)
+    pitch = db.Column(db.Float, nullable=True)
+    roll = db.Column(db.Float, nullable=True)
+
+    # Velocity [m/s]
+    vx = db.Column(db.Float, nullable=True)
+    vy = db.Column(db.Float, nullable=True)
+    vz = db.Column(db.Float, nullable=True)
+
+    # Position 1-sigma uncertainty [m]
+    std_x = db.Column(db.Float, nullable=True)
+    std_y = db.Column(db.Float, nullable=True)
+    std_z = db.Column(db.Float, nullable=True)
+
+    num_anchors = db.Column(db.Integer, nullable=True)   # anchors in last UWB fix
+    created_at_utc = db.Column(db.DateTime, nullable=False, default=_utcnow)
+
+    __table_args__ = (
+        db.Index('ix_fused_session_time', 'session_id', 'pi_received_at_utc'),
+    )
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'session_id': self.session_id,
+            'pi_received_at_utc': self.pi_received_at_utc.isoformat() if self.pi_received_at_utc else None,
+            'matlab_time_utc': self.matlab_time_utc.isoformat() if self.matlab_time_utc else None,
+            'x': self.x, 'y': self.y, 'z': self.z,
+            'quat': [self.qw, self.qx, self.qy, self.qz],
+            'euler_deg': [self.yaw, self.pitch, self.roll],
+            'velocity': [self.vx, self.vy, self.vz],
+            'pos_std': [self.std_x, self.std_y, self.std_z],
+            'num_anchors': self.num_anchors,
+        }
