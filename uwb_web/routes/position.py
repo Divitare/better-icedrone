@@ -23,14 +23,14 @@ def index():
         'z': a.z,
     } for a in anchors]
 
-    pos_data = worker.get_position() if worker else {'position': None, 'history': []}
+    fused = worker.get_fused_pose() if worker else {'pose': None, 'history': []}
     live_data = worker.get_live_data() if worker else {}
 
     return render_template(
         'position.html',
         anchors=anchor_data,
-        position=pos_data['position'],
-        history=pos_data['history'],
+        position=fused['pose'],
+        history=fused['history'],
         live_data=live_data,
         enough_anchors=len(anchors) >= 3,
     )

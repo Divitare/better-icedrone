@@ -44,7 +44,7 @@
 {% if not enough_anchors %}
 <div class="flash flash-info">
     <strong>Not enough anchors configured.</strong>
-    At least 3 anchors with X/Y coordinates are needed for 2D positioning.
+    At least 3 anchors with X/Y coordinates are needed to draw the map reference.
     Configure them on the <a href="{{ url_for('devices.index') }}">Devices</a> page.
 </div>
 {% endif %}
@@ -54,15 +54,16 @@
         <canvas id="pos-canvas"></canvas>
         <div class="legend">
             <span><span class="legend-dot" style="background: var(--blue);"></span> Anchor</span>
-            <span><span class="legend-dot" style="background: var(--red);"></span> Tag position</span>
+            <span><span class="legend-dot" style="background: var(--red);"></span> Fused position</span>
             <span><span class="legend-dot" style="background: rgba(228,65,24,0.25);"></span> History trail</span>
         </div>
     </div>
 
     <div class="pos-sidebar">
         <div class="pos-info">
-            <h3>Tag Position</h3>
+            <h3>Tag Position (MATLAB fused)</h3>
             <div class="coord-display" id="pos-coords">—</div>
+            <div style="text-align: center; font-size: 12px; color: var(--text-muted);" id="pos-orient">—</div>
             <div style="text-align: center; font-size: 12px; color: var(--text-muted);" id="pos-time">—</div>
         </div>
 

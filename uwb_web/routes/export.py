@@ -67,3 +67,14 @@ def fused_poses_csv():
         csv_data, mimetype='text/csv',
         headers={'Content-Disposition': 'attachment; filename=fused_poses.csv'},
     )
+
+
+@bp.route('/calibration_fused')
+def calibration_fused_csv():
+    run_id = request.args.get('run_id', type=int)
+    csv_data = export_service.export_calibration_fused_csv(run_id)
+    fname = 'calibration_fused_run{}.csv'.format(run_id if run_id else 'none')
+    return Response(
+        csv_data, mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=' + fname},
+    )

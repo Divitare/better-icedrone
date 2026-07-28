@@ -16,7 +16,7 @@ import math
 import time
 import threading
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 import numpy as np
 
@@ -116,6 +116,85 @@ def compute_position_stats(points_data):
         'median_error': round(float(np.median(arr)), 4),
         'n_points': len(errors),
     }
+
+
+def evaluate_fused_against_run(run):
+    """Compare the MATLAB fused pose against traverse ground truth for a run.
+
+    The calibration run drove the traverse through known points and recorded,
+    for each, the true position and the dwell end time (collected_at_utc). The
+    MATLAB filter meanwhile posted fused poses (FusedPose rows) tagged with the
+    same Pi clock. For each point we average the fused poses that fall in that
+    point's dwell window [collected_at - dwell, collected_at] and compare to the
+    true position.
+
+    No calibration state is modified; this is a read-only, post-hoc analysis,
+    so it also works on runs recorded before MATLAB was pushing.
+
+    Returns {per_point: [...], summary: {...}, dwell_seconds: float}.
+    """
+    from uwb_web.models import FusedPose
+
+    dwell = run.dwell_seconds or 3.0
+    per_point = []
+    errors = []
+    true_xy = []
+    fused_xy = []
+
+    for p in run.points.all():
+        end = p.collected_at_utc
+        if end is None:
+            continue
+        start = end - timedelta(seconds=dwell)
+        rows = (
+            FusedPose.query
+            .filter(FusedPose.pi_received_at_utc >= start,
+                    FusedPose.pi_received_at_utc <= end)
+            .all()
+        )
+        if not rows:
+            per_point.append({
+                'index': p.point_index,
+                'true': [p.true_x, p.true_y, p.true_z],
+                'fused': None, 'n_fused': 0, 'error_m': None,
+            })
+            continue
+
+        fx = float(np.mean([r.x for r in rows]))
+        fy = float(np.mean([r.y for r in rows]))
+        fz = float(np.mean([r.z for r in rows]))
+        err = _euclidean((p.true_x, p.true_y, p.true_z), (fx, fy, fz))
+
+        errors.append(err)
+        true_xy.append([p.true_x, p.true_y])
+        fused_xy.append([fx, fy])
+        per_point.append({
+            'index': p.point_index,
+            'true': [p.true_x, p.true_y, p.true_z],
+            'fused': [round(fx, 4), round(fy, 4), round(fz, 4)],
+            'n_fused': len(rows),
+            'error_m': round(err, 4),
+        })
+
+    summary = {'n_points': len(errors)}
+    if errors:
+        arr = np.array(errors)
+        summary.update({
+            'rmse': round(float(np.sqrt(np.mean(arr ** 2))), 4),
+            'mean_error': round(float(np.mean(arr)), 4),
+            'median_error': round(float(np.median(arr)), 4),
+            'max_error': round(float(np.max(arr)), 4),
+        })
+        # Alignment-independent scatter: best-fit rigid transform residual (2D).
+        # Removes any constant offset/rotation between the traverse frame and
+        # the anchor frame, isolating the filter's own scatter.
+        if len(fused_xy) >= 3:
+            tf = estimate_rigid_transform(true_xy, fused_xy)
+            if tf:
+                summary['bestfit_rmse_m'] = tf['rmse_m']
+                summary['bestfit_rotation_deg'] = tf['rotation_deg']
+
+    return {'per_point': per_point, 'summary': summary, 'dwell_seconds': dwell}
 
 
 # ──────────────────────────────────────────────────────────────────────

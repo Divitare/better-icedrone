@@ -139,6 +139,24 @@ def api_run_detail(run_id):
     })
 
 
+@bp.route('/api/runs/<int:run_id>/fused-eval')
+def api_run_fused_eval(run_id):
+    """Evaluate the MATLAB fused pose against this run's traverse ground truth.
+
+    Time-joins the FusedPose rows recorded during each point's dwell against the
+    known traverse position. Read-only; requires no calibration re-run.
+    """
+    from uwb_web.models import CalibrationRun
+    from uwb_web.db import db
+    from uwb_web.services.calibration import evaluate_fused_against_run
+
+    run = db.session.get(CalibrationRun, run_id)
+    if not run:
+        return jsonify({'status': 'error', 'msg': 'Run not found.'}), 404
+    result = evaluate_fused_against_run(run)
+    return jsonify({'status': 'ok', 'run_id': run_id, **result})
+
+
 # ------------------------------------------------------------------
 # Apply / toggle corrections
 # ------------------------------------------------------------------

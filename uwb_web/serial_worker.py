@@ -523,11 +523,11 @@ class SerialWorker:
                         entry['covariance'] = result['covariance']
                     if result.get('rejected_anchors'):
                         entry['rejected'] = result['rejected_anchors']
+                    # Store only (kept for the calibration workflow). The live
+                    # UI shows the MATLAB fused pose, not this Pi estimate.
                     with self._position_lock:
                         self.last_position = entry
                         self.position_history.append(entry)
-                    if self.sse_broadcaster:
-                        self.sse_broadcaster.publish({'type': 'position', **entry})
                     return
 
                 # Fallback to basic trilateration
@@ -546,11 +546,5 @@ class SerialWorker:
                     with self._position_lock:
                         self.last_position = entry
                         self.position_history.append(entry)
-
-                    if self.sse_broadcaster:
-                        self.sse_broadcaster.publish({
-                            'type': 'position',
-                            **entry,
-                        })
         except Exception as e:
             logger.debug("Position estimation error: %s", e)

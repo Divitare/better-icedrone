@@ -88,6 +88,35 @@ def export_events_csv(start=None, end=None, session_id=None):
     return output.getvalue()
 
 
+def export_calibration_fused_csv(run_id):
+    """Per-point fused-pose vs traverse-truth error for one calibration run."""
+    from uwb_web.models import CalibrationRun
+    from uwb_web.services.calibration import evaluate_fused_against_run
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        'point_index', 'true_x', 'true_y', 'true_z',
+        'fused_x', 'fused_y', 'fused_z', 'n_fused', 'error_m',
+    ])
+
+    run = db.session.get(CalibrationRun, run_id) if run_id else None
+    if not run:
+        return output.getvalue()
+
+    ev = evaluate_fused_against_run(run)
+    for row in ev['per_point']:
+        t = row['true']
+        f = row['fused']
+        writer.writerow([
+            row['index'], t[0], t[1], t[2],
+            f[0] if f else '', f[1] if f else '', f[2] if f else '',
+            row['n_fused'],
+            row['error_m'] if row['error_m'] is not None else '',
+        ])
+    return output.getvalue()
+
+
 def export_fused_poses_csv(start=None, end=None, session_id=None):
     q = db.session.query(FusedPose, Session).outerjoin(
         Session, FusedPose.session_id == Session.id

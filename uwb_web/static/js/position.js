@@ -1,9 +1,18 @@
-/* position.js — Live 2D position map with SSE updates */
+/* position.js — Live 2D map of the MATLAB fused pose (SSE updates) */
 
 (function() {
     var canvas = document.getElementById('pos-canvas');
     var ctx = canvas.getContext('2d');
     var MAX_TRAIL = 200;
+
+    // Normalise fused-pose history entries to the fields this renderer uses.
+    posHistory = (posHistory || []).map(function(p) {
+        return {
+            x: p.x, y: p.y, z: p.z,
+            ts: p.pi_received_at_utc || p.ts || null,
+            euler: p.euler_deg || null,
+        };
+    });
 
     // Live ranges per device hex
     var liveRanges = {};
@@ -21,6 +30,7 @@
     // Stats
     var statCount = document.getElementById('stat-count');
     var posCoords = document.getElementById('pos-coords');
+    var posOrient = document.getElementById('pos-orient');
     var posTime = document.getElementById('pos-time');
 
     // DPI scaling
@@ -216,10 +226,17 @@
             var txt = 'X: ' + last.x.toFixed(3) + '  Y: ' + last.y.toFixed(3);
             if (last.z != null) txt += '  Z: ' + last.z.toFixed(3);
             posCoords.textContent = txt;
+            if (posOrient) {
+                posOrient.textContent = last.euler
+                    ? ('yaw ' + last.euler[0].toFixed(1) + '°  pitch ' +
+                       last.euler[1].toFixed(1) + '°  roll ' + last.euler[2].toFixed(1) + '°')
+                    : '';
+            }
             posTime.textContent = timeAgo(last.ts);
         } else {
             posCoords.textContent = '—';
-            posTime.textContent = 'Waiting for position data…';
+            if (posOrient) posOrient.textContent = '';
+            posTime.textContent = 'Waiting for fused pose…';
         }
         statCount.textContent = posHistory.length;
 
@@ -239,9 +256,12 @@
         sse.onmessage = function(event) {
             try {
                 var data = JSON.parse(event.data);
-                if (data.type === 'position') {
-                    var entry = { x: data.x, y: data.y, ts: data.ts };
-                    if (data.z != null) entry.z = data.z;
+                if (data.type === 'fused_position') {
+                    var entry = {
+                        x: data.x, y: data.y, z: data.z,
+                        ts: data.pi_received_at_utc,
+                        euler: data.euler_deg || null,
+                    };
                     posHistory.push(entry);
                     if (posHistory.length > MAX_TRAIL) posHistory.shift();
                     draw();
